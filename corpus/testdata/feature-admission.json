@@ -1,0 +1,22 @@
+[
+  {
+    "schema": 1, "id": "features/tail-call", "family": "mechanisms",
+    "artifact": "feature-tail-call.wasm",
+    "sha256": "4a7aaf94a1e17bb81a9d648575ab10020ef8440d35dd0025f9aaedd23ec457a6",
+    "abi": "core", "export": "benchmark", "args": [],
+    "work_unit": "invocation", "units_per_invocation": 1,
+    "reset": "fresh_instance_per_sample",
+    "oracle": {"kind": "exact_u64", "expected": [7]},
+    "license": "MIT", "source": "feature-tail-call.wat", "generator": "WABT 1.0.41 --enable-tail-call"
+  },
+  {
+    "schema": 1, "id": "features/simd-bulk-memory", "family": "mechanisms",
+    "artifact": "analyzer-features.wasm",
+    "sha256": "0cdac9a18b51001a4e152aa6ad9a820b11ebe7bee2b0a9f0dd7949ea958da1f4",
+    "abi": "core", "export": "benchmark", "args": [],
+    "work_unit": "invocation", "units_per_invocation": 1,
+    "reset": "fresh_instance_per_sample",
+    "oracle": {"kind": "exact_u64", "expected": [7]},
+    "license": "MIT", "source": "analyzer-features.wat", "generator": "WABT 1.0.41"
+  }
+]

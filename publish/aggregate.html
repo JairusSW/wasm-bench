@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,"><title>Wasmbench · Fixed-set comparison</title>
+<style>
+:root{font:15px/1.5 system-ui,sans-serif;color:#dfe7f4;background:#101722;color-scheme:dark}*{box-sizing:border-box}body{margin:0}main{max-width:1120px;margin:auto;padding:40px 24px}h1{font-size:38px;letter-spacing:-.04em;line-height:1.15}h2{font-size:23px;margin-top:32px}h3{margin:0;overflow-wrap:anywhere}a{color:#92c7ff}.eyebrow{color:#72dcc6;letter-spacing:.12em;text-transform:uppercase;font-size:12px}.notice{border-left:3px solid #edb85f;background:#202534;padding:16px}.muted{color:#a5b2c7}.links{display:flex;gap:12px 20px;flex-wrap:wrap}article{border-bottom:1px solid #354055;padding:20px 0}.metric{font-size:27px;color:#72dcc6;margin:8px 0}.plot{height:28px;position:relative;margin:12px 0;background:#192335;border-radius:4px}.range{position:absolute;height:4px;top:12px;background:#72dcc6}.dot{position:absolute;width:12px;height:12px;top:8px;background:#72dcc6;border-radius:50%;transform:translateX(-50%)}.reference{position:absolute;top:0;height:28px;border-left:1px dashed #899bb5}.table-wrap{overflow:auto}table{border-collapse:collapse;min-width:850px;width:100%;font-size:13px}th,td{text-align:left;padding:12px 10px;border-bottom:1px solid #354055;vertical-align:top}th{color:#a5b2c7}td:first-child{overflow-wrap:anywhere;max-width:270px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#192335;padding:16px;max-height:400px;overflow:auto;font-size:12px}summary{cursor:pointer;padding:10px 0}p,code{overflow-wrap:anywhere}footer{margin-top:30px;font-size:12px;color:#a5b2c7}label{display:block;margin:18px 0 6px}input{font:inherit;background:#192335;color:inherit;border:1px solid #46546b;padding:10px;width:100%;border-radius:4px}@media(max-width:600px){main{padding:24px 16px}h1{font-size:30px}}
+</style></head><body><main>
+<header><div class="eyebrow">Wasmbench / Fixed workload set</div><h1>Compare the declared set.<br>Keep the missing evidence visible.</h1><p id="identity"></p><nav class="links" aria-label="Report evidence"><a href="data.json">Analysis dataset</a><a href="set.json">Fixed set &amp; weights</a><a href="raw/manifest.json">Locked configuration &amp; host</a><a href="trials.json">Raw trials</a><a href="raw/checksums.json">Source checksums</a><a href="checksums.json">Report checksums</a></nav></header>
+<p class="notice">Exploratory comparison, not an official runtime ranking. Missing required workloads never receive zero scores or redistribute their weights. Incomplete blocks are excluded together, not workload by workload. Review failures and stability before interpreting a ratio.</p>
+<h2>Whole-set comparison</h2><section id="overall"></section>
+<h2>Declared categories</h2><p id="axis" class="muted"></p><section id="categories"></section>
+<h2>Coverage comes first</h2><p>Counts refer to paired, positive launch medians. Availability is not a claim of warmup convergence. Filtering this table does not change the aggregate or its fixed membership.</p>
+<label for="filter">Find a workload or status</label><input id="filter" type="search" placeholder="Filter coverage"><p id="count" aria-live="polite" class="muted"></p>
+<div class="table-wrap"><table><thead><tr><th>Workload / category</th><th>Status</th><th>Paired blocks</th><th>Baseline outcomes / stability</th><th>Candidate outcomes / stability</th></tr></thead><tbody id="coverage"></tbody></table></div>
+<details><summary>Calculation and limitations</summary><p id="method"></p><p id="interpretation"></p><pre id="identity-data"></pre></details>
+<details><summary>Exact runtime configurations</summary><pre id="configurations"></pre></details>
+<details><summary>Reproduce and regenerate</summary><p>Run these commands from this report directory using the recorded runner and compatible host. The copied bundle contains raw inputs, not installed runtime binaries. Regeneration requires a wasmbench build supporting this analysis version. Existing reports are never overwritten.</p><pre id="reproduce"></pre></details>
+<footer>This report works offline and includes the original verified run bundle. Copy the entire directory, not only this page.</footer>
+</main><script>
+'use strict';
+const dataset={{.Data}}, data=dataset.analysis;
+const node=(tag,text)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e};
+const format=n=>Number.isFinite(n)?n.toFixed(3)+'×':'Unavailable';
+const rows=[data.overall,...data.categories];
+const max=Math.max(1,...rows.flatMap(r=>[r.candidate_over_baseline,r.ci95_high].filter(Number.isFinite)))*1.1;
+document.getElementById('identity').textContent=data.set.id+' · '+data.set.scenario+' · '+data.candidate_configuration.id+' / '+data.baseline_configuration.id+' · run '+data.run;
+document.getElementById('axis').textContent='Shared ratio scale 0–'+max.toFixed(3)+'×; dashed marker = 1×. Lower elapsed-time ratios favor the candidate. Category weights are relative; members divide each category weight equally.';
+function card(r,whole){
+ const a=node('article');a.append(node('h3',whole?'All required workloads':r.category));
+ a.append(node('p',(whole?'Fixed set':'Weight '+r.weight)+' · coverage '+r.covered_workloads+'/'+r.required_workloads+' workloads · '+r.complete_blocks.length+'/'+data.planned_blocks+' complete blocks · '+r.status));
+ a.append(node('p',format(r.candidate_over_baseline))); // All numeric values remain text, never markup.
+ a.lastChild.className='metric';
+ if(Number.isFinite(r.candidate_over_baseline)){
+  const plot=node('div');plot.className='plot';plot.setAttribute('role','img');plot.setAttribute('aria-label','Candidate over baseline '+format(r.candidate_over_baseline)+'; 95% interval '+format(r.ci95_low)+' to '+format(r.ci95_high));
+  const ref=node('span');ref.className='reference';ref.style.left=100/max+'%';plot.append(ref);
+  if(Number.isFinite(r.ci95_low)&&Number.isFinite(r.ci95_high)){const line=node('span');line.className='range';line.style.left=100*r.ci95_low/max+'%';line.style.width=100*(r.ci95_high-r.ci95_low)/max+'%';plot.append(line)}
+  const dot=node('span');dot.className='dot';dot.style.left=100*r.candidate_over_baseline/max+'%';plot.append(dot);a.append(plot);
+ }
+ a.append(node('p','95% interval: '+format(r.ci95_low)+' – '+format(r.ci95_high)+' · complete block IDs: '+(r.complete_blocks.join(', ')||'none')));
+ return a;
+}
+document.getElementById('overall').append(card(data.overall,true));
+for(const c of data.categories)document.getElementById('categories').append(card(c,false));
+function coverage(){const query=document.getElementById('filter').value.toLowerCase(),body=document.getElementById('coverage');body.replaceChildren();let count=0;for(const c of data.coverage){if(query&&!JSON.stringify(c).toLowerCase().includes(query))continue;count++;const row=node('tr');for(const value of [c.workload+' / '+c.category,c.status,c.paired_blocks.join(', ')||'none',JSON.stringify(c.baseline_outcomes)+' / '+(c.baseline_stability||'not established'),JSON.stringify(c.candidate_outcomes)+' / '+(c.candidate_stability||'not established')])row.append(node('td',value));body.append(row)}document.getElementById('count').textContent=count+' of '+data.coverage.length+' required workloads shown';}
+document.getElementById('filter').addEventListener('input',coverage);coverage();
+document.getElementById('method').textContent=data.method;
+document.getElementById('interpretation').textContent=data.interpretation;
+document.getElementById('identity-data').textContent=JSON.stringify({analysis_version:data.analysis_version,set_sha256:data.set_sha256,lock_sha256:data.lock_sha256,source_checksums_sha256:dataset.source_checksums_sha256},null,2);
+document.getElementById('configurations').textContent=JSON.stringify({baseline:data.baseline_configuration,candidate:data.candidate_configuration},null,2);
+const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
+document.getElementById('reproduce').textContent='wasmbench verify --run raw\nwasmbench reproduce raw --out ../reproduced-run\nwasmbench aggregate-report --run raw --set set.json --baseline '+quote(data.baseline_configuration.id)+' --candidate '+quote(data.candidate_configuration.id)+' --out ../regenerated-report';
+</script></body></html>

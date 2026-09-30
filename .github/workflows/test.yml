@@ -1,0 +1,300 @@
+name: Contracts and adapters
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  wago:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: wasmbench
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: wasmbench
+      - uses: actions/checkout@v4
+        with:
+          repository: wago-org/wago
+          ref: 49acf64a3800d3a00ab4ff0a69e5772d6f293215
+          path: wago
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+          cache-dependency-path: wasmbench/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.4.0'
+      - run: rustup toolchain install 1.98.1 --profile minimal && rustup default 1.98.1
+      - run: go build -trimpath -o bin/wasmbench ./cmd/wasmbench
+      - run: ./bin/wasmbench build --runtimes wago --wago-source ../wago
+      - name: Pinned Wago adapter conformance
+        env:
+          WASMBENCH_FLOAT_TEST_RUNTIMES: wago
+          WASMBENCH_DENSITY_TEST_RUNTIMES: wago
+          WASMBENCH_TEARDOWN_TEST_RUNTIMES: wago
+          WASMBENCH_APP_INIT_TEST_RUNTIMES: wago
+          WASMBENCH_AOT_TEST_RUNTIMES: wago
+          WASMBENCH_HARNESS_TEST_RUNTIMES: wago
+          WASMBENCH_HOST_TEST_RUNTIMES: wago
+          WASMBENCH_TRAJECTORY_TEST_RUNTIMES: wago
+          WASMBENCH_TRAP_TEST_RUNTIMES: wago
+          WASMBENCH_PHASE_TEST_RUNTIMES: wago
+          WASMBENCH_COUNTER_TEST_RUNTIMES: wago
+          WASMBENCH_FIRST_COUNTER_TEST_RUNTIMES: wago
+          WASMBENCH_STEADY_COUNTER_TEST_RUNTIMES: wago
+          WASMBENCH_FEATURE_TEST_RUNTIMES: wago
+        run: |
+          go test -count=1 ./experiment -run 'TestBuilt(Adapter|FeatureAdmission)' -json |
+            node recipes/verify-go-test-coverage.mjs --package github.com/wasmbench/wasmbench/experiment --require TestBuiltAdapterFloat,TestBuiltAdapterHarnessCalibration,TestBuiltAdapterAppInit,TestBuiltAdapterTeardown,TestBuiltAdapterTraps,TestBuiltAdapterTrajectory
+  packaged-container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --progress=plain -t wasmbench:ci .
+      - run: sh recipes/test-container.sh wasmbench:ci container-smoke
+      - name: Native Linux continuation and residency qualification
+        run: sh recipes/test-linux-continuations.sh wasmbench:ci native-continuation-linux
+      - name: Native Linux code lifetime collection and locked replay
+        run: sh recipes/test-linux-code-lifetime.sh wasmbench:ci native-code-lifetime-linux
+      - name: Build standalone Linux process snapshot qualifier
+        run: sh recipes/wasmtime-linux.sh build-process-snapshot
+      - name: Process snapshot qualification and archived functional replay
+        run: |
+          sh recipes/qualify-linux-process-snapshots.sh wasmbench:ci process-snapshot-qualification
+          sh recipes/replay-linux-process-snapshots.sh process-snapshot-qualification process-snapshot-replayed
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+      - name: Simultaneous snapshot density and owned-source death cleanup
+        run: |
+          CGO_ENABLED=0 go test -c -o .wasmbench/snapshot-density.test ./experiment
+          CGO_ENABLED=0 go build -trimpath -o .wasmbench/wasmbench-linux-process-snapshot ./cmd/wasmbench
+          sh recipes/test-linux-snapshot-density.sh wasmbench:ci snapshot-density-native product
+          WASMBENCH_SNAPSHOT_DENSITY_PRODUCT_EVIDENCE_DIR="$PWD/runs/snapshot-density-native" go test ./experiment -run TestRetainedSnapshotDensityProduct -count=1 -v
+          WASMBENCH_SNAPSHOT_DENSITY_ANALYSIS_RUN="$PWD/runs/snapshot-density-native/original" go test ./analysis ./publish -run '^TestRetainedSnapshotDensity(Analysis|Footprints)$' -count=1 -v
+      - name: Native Linux Preview 2 CLI lifecycle, procfs and archived-tool replay
+        run: |
+          sh recipes/build-p2-reset-fixture.sh
+          sh recipes/wasmtime-linux.sh build
+          CGO_ENABLED=0 go build -trimpath -o .wasmbench/wasmbench-linux-p2 ./cmd/wasmbench
+          sh recipes/test-linux-p2.sh wasmbench:ci p2-lifecycle-native
+      - name: Native Linux WASI/Emscripten command lifecycle and archived replay
+        run: |
+          CGO_ENABLED=0 go build -trimpath -o .wasmbench/wasmbench-linux-command ./cmd/wasmbench
+          CGO_ENABLED=0 go build -trimpath -o .wasmbench/adapter-wazero-linux-command ./adapters/wazero
+          sh recipes/test-linux-command-lifecycle.sh wasmbench:ci command-lifecycle-native
+      - uses: actions/checkout@v4
+        with:
+          repository: wago-org/wago
+          ref: 9f01d145d54ac7ab458b6b2f6047db90a757410a
+          path: .wasmbench/wago-vector-source
+          persist-credentials: false
+      - name: Native Linux vector lifecycle, initialization order and archived replay
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal && rustup default 1.98.1
+          CGO_ENABLED=0 go build -trimpath -o .wasmbench/wasmbench-linux-vector ./cmd/wasmbench
+          CGO_ENABLED=0 go build -trimpath -o .wasmbench/adapter-wazero-linux-vector ./adapters/wazero
+          CGO_ENABLED=0 ./.wasmbench/wasmbench-linux-vector build --runtimes wago --wago-source .wasmbench/wago-vector-source
+          cp bin/adapter-wago .wasmbench/adapter-wago-linux-vector
+          sh recipes/test-linux-vector-lifecycle.sh wasmbench:ci vector-lifecycle-native
+      - name: Private-cgroup vector phase peaks, CPU and archived replay
+        run: |
+          CGO_ENABLED=0 go test -c -o .wasmbench/agent-cgroup-vector.test ./agent
+          WASMBENCH_EPHEMERAL_CGROUP_TEST=1 sh recipes/test-linux-vector-cgroup.sh wasmbench:ci vector-cgroup-native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: packaged-container-evidence
+          path: |
+            runs/container-smoke/
+            runs/native-continuation-linux/
+            runs/native-code-lifetime-linux/
+            runs/process-snapshot-qualification/
+            runs/process-snapshot-replayed/
+            runs/snapshot-density-native/
+            runs/p2-lifecycle-native/
+            runs/command-lifecycle-native/
+            runs/vector-lifecycle-native/
+            runs/vector-cgroup-native/
+  go-and-v8:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.4.0'
+      - run: rustup toolchain install 1.98.1 --profile minimal && rustup default 1.98.1
+      - run: go test -race ./...
+      - run: go vet ./...
+      - run: make build
+      - run: WASMBENCH_COMPONENT_ANALYZER=../adapters/wasmtime/target/release/wasm-analyze go test ./experiment -run TestComponentAdmissionBundle -count=1 -v
+      - run: node --test adapters/v8/*.test.mjs publish/report-ui.test.mjs recipes/*.test.mjs
+      - name: Float and lifecycle conformance
+        env:
+          WASMBENCH_FLOAT_TEST_RUNTIMES: wazero,wazero-interpreter,v8
+          WASMBENCH_TEARDOWN_TEST_RUNTIMES: wazero,wazero-interpreter,v8
+          WASMBENCH_APP_INIT_TEST_RUNTIMES: wazero,wazero-interpreter,v8
+          WASMBENCH_HOST_TEST_RUNTIMES: wazero,wazero-interpreter,v8
+        run: go test -count=1 ./experiment -run 'TestBuiltAdapter(Float|Teardown|AppInit|AssemblyScript)' -v
+      - run: WASMBENCH_DENSITY_TEST_RUNTIMES=wazero,wazero-interpreter,v8 go test ./experiment -run TestBuiltAdapterDensity -count=1 -v
+      - run: WASMBENCH_ENGINE_INIT_TEST_RUNTIMES=wazero,wazero-interpreter go test ./experiment -run TestBuiltAdapterEngineInitOracles -count=1 -v
+      - run: WASMBENCH_HARNESS_TEST_RUNTIMES=wazero,wazero-interpreter,v8 go test ./experiment -run TestBuiltAdapterHarnessCalibration -count=1 -v
+      - run: WASMBENCH_COMMAND_LIFECYCLE_TEST_RUNTIMES=wazero,wazero-interpreter go test ./experiment -run TestBuiltAdapterCommandLifecyclePhases -count=1 -v
+      - run: WASMBENCH_REACTOR_TEST_RUNTIMES=wazero,wazero-interpreter go test ./experiment -run TestBuiltAdapterReactors -count=1 -v
+      - run: WASMBENCH_ARCHIVE_TEST_RUNTIMES=wazero,v8 go test ./experiment -run TestBuiltAdapterToolArchiveReplay -count=1 -v
+      - name: Linux ELF dependency and origin relocation conformance
+        if: runner.os == 'Linux'
+        run: go test ./experiment -run TestELF -count=1 -v
+      - run: WASMBENCH_COUNTER_TEST_RUNTIMES=wazero,wazero-interpreter,v8 go test ./experiment -run TestBuiltAdapterCounters -count=1 -v
+      - run: WASMBENCH_FIRST_COUNTER_TEST_RUNTIMES=wazero,wazero-interpreter,v8 go test ./experiment -run TestBuiltAdapterFirstCallCounters -count=1 -v
+      - run: WASMBENCH_STEADY_COUNTER_TEST_RUNTIMES=wazero,wazero-interpreter,v8 go test ./experiment -run TestBuiltAdapterSteadyCounters -count=1 -v
+      - run: WASMBENCH_GO_PROFILE_TEST=1 WASMBENCH_V8_PROFILE_TEST=1 go test ./experiment -run TestBuiltAdapterCPUProfiling -count=1 -v
+      - run: WASMBENCH_PHASE_TEST_RUNTIMES=wazero,wazero-interpreter,v8 go test ./experiment -run TestBuiltAdapter -v
+      - run: WASMBENCH_FEATURE_TEST_RUNTIMES=wazero,wazero-interpreter,v8 go test ./experiment -run TestBuiltFeatureAdmission -v
+      - run: WASMBENCH_TRAP_TEST_RUNTIMES=wazero,wazero-interpreter,v8 go test ./experiment -run TestBuiltAdapterTraps -v
+      - run: WASMBENCH_TRAJECTORY_TEST_RUNTIMES=wazero,wazero-interpreter,v8 go test ./experiment -run TestBuiltAdapterTrajectory -v
+      - run: ./bin/wasmbench check --runtimes wazero,wazero-interpreter,v8 --out runs/check
+      - run: ./bin/wasmbench check --suite scaling --runtimes wazero,wazero-interpreter,v8 --out runs/scaling-check
+      - run: ./bin/wasmbench run --launches 2 --samples 3 --operations 5 --out runs/smoke
+      - run: ./bin/wasmbench report --run runs/smoke --out reports/smoke
+      - run: ./bin/wasmbench reproduce runs/smoke --out runs/reproduced
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evidence-${{ matrix.os }}
+          path: |
+            runs/
+            reports/
+  windows-lifecycle:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.4.0'
+      - name: Native Windows tools and portable path contracts
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Rust setup failed' }
+          rustup default 1.98.1
+          if ($LASTEXITCODE -ne 0) { throw 'Rust selection failed' }
+          go build -trimpath -o bin/wasmbench.exe ./cmd/wasmbench
+          if ($LASTEXITCODE -ne 0) { throw 'Controller build failed' }
+          ./bin/wasmbench.exe build --runtimes wazero,wazero-interpreter,v8
+          if ($LASTEXITCODE -ne 0) { throw 'Adapter/analyzer build failed' }
+          go test ./experiment -run 'Test(NativeExecutable|ResolvedNativeRuntime|WindowsMultiVolume|ArchiveRestoration|RecordedProducer|PortableArchiveProducer|OfflineWindows|PortableAnalyzer|ELFContract)' -count=1 -v
+          if ($LASTEXITCODE -ne 0) { throw 'Windows path tests failed' }
+          go test ./cmd/wasmbench -run TestPlanAdmissionDefaultAndLockedPolicy -count=1 -v
+          if ($LASTEXITCODE -ne 0) { throw 'Windows planning test failed' }
+      - name: Native lifecycle, explicit collector gaps and archived-tool replay
+        shell: pwsh
+        run: ./recipes/test-windows-lifecycle.ps1 -Bundle windows-lifecycle-native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-lifecycle-evidence
+          path: runs/windows-lifecycle-native/
+  wasmtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.4.0'
+      - run: rustup toolchain install 1.98.1 --profile minimal && rustup default 1.98.1
+      - run: cargo build --release --locked --manifest-path adapters/wasmtime/Cargo.toml --features component-fixtures
+      - run: cargo test --locked --manifest-path adapters/wasmtime/Cargo.toml --features component-fixtures
+      - name: Qualify typed component calls and archived replay
+        run: |
+          mkdir -p .wasmbench
+          adapters/wasmtime/target/release/component-u64-fixture .wasmbench/component-u64.wasm
+          WASMBENCH_COMPONENT_U64_ARTIFACT="$PWD/.wasmbench/component-u64.wasm" \
+          WASMBENCH_COMPONENT_ADAPTER="$PWD/adapters/wasmtime/target/release/adapter-wasmtime" \
+          WASMBENCH_COMPONENT_ANALYZER="$PWD/adapters/wasmtime/target/release/wasm-analyze" \
+          WASMBENCH_COMPONENT_U64_EVIDENCE_DIR="$PWD/runs/component-u64-ci" \
+          go test ./experiment -run '^TestComponentU64(Bundle|MemoryBundle)$' -count=1 -json |
+            node recipes/verify-go-test-coverage.mjs --package github.com/wasmbench/wasmbench/experiment --require TestComponentU64Bundle,TestComponentU64MemoryBundle
+      - name: Build Preview 2 filesystem reset guest
+        run: |
+          rustup target add wasm32-wasip2
+          mkdir -p .wasmbench/p2-reset-fixture
+          rustc --edition 2024 --target wasm32-wasip2 -O corpus/testdata/p2-filesystem-reset.rs -o .wasmbench/p2-reset-fixture/p2-filesystem-reset.component.wasm
+      - name: Preview 2 filesystem reset and lifecycle qualification on both backends
+        run: |
+          WASMBENCH_COMPONENT_RESET_ARTIFACT="$PWD/.wasmbench/p2-reset-fixture/p2-filesystem-reset.component.wasm" \
+          WASMBENCH_COMPONENT_ADAPTER="$PWD/adapters/wasmtime/target/release/adapter-wasmtime" \
+          WASMBENCH_COMPONENT_ANALYZER="$PWD/adapters/wasmtime/target/release/wasm-analyze" \
+          WASMBENCH_COMPONENT_RESET_EVIDENCE_DIR="$PWD/runs/p2-filesystem-reset-ci" \
+          WASMBENCH_COMPONENT_LIFECYCLE_EVIDENCE_DIR="$PWD/runs/p2-command-lifecycle-ci" \
+          go test ./experiment -run 'TestComponent(FilesystemResetBundle|CommandLifecycle|CommandControllerCapabilityGate)' -count=1 -json |
+            node recipes/verify-go-test-coverage.mjs --package github.com/wasmbench/wasmbench/experiment --require TestComponentFilesystemResetBundle,TestComponentCommandLifecycleBundle,TestComponentCommandLifecycleRejections,TestComponentCommandControllerCapabilityGate
+      - name: Native executable-code lifetime qualification
+        run: cargo test --release --locked --manifest-path adapters/wasmtime/Cargo.toml --features native-code-lifetime --bin adapter-wasmtime code_lifetime
+      - name: Build native code lifetime diagnostic adapter
+        run: cargo build --release --locked --manifest-path adapters/wasmtime/Cargo.toml --features native-code-lifetime --target-dir adapters/wasmtime/target/code-lifetime --bin adapter-wasmtime
+      - name: Code lifetime sealed controller and report round trip
+        run: WASMBENCH_CODE_LIFETIME_TEST=1 go test ./experiment -run TestWasmtimeCodeLifetimeControllerRoundTrip -count=1 -v
+      - name: Build standalone process-level COW qualifier
+        run: cargo build --release --locked --manifest-path adapters/wasmtime/Cargo.toml --features process-snapshot --target-dir adapters/wasmtime/target/process-snapshot --bin qualify-process-snapshot
+      - name: Single-threaded process COW functional qualification only
+        run: |
+          adapters/wasmtime/target/process-snapshot/release/qualify-process-snapshot --test-thread-guard
+          adapters/wasmtime/target/process-snapshot/release/qualify-process-snapshot --test-failure-cleanup
+          adapters/wasmtime/target/process-snapshot/release/qualify-process-snapshot
+      - name: Snapshot live-process diagnostic inspection
+        run: |
+          mkdir -p runs
+          mkdir runs/snapshot-live-inspection
+          WASMBENCH_SNAPSHOT_LIVE_ADAPTER="$PWD/adapters/wasmtime/target/process-snapshot/release/qualify-process-snapshot" WASMBENCH_SNAPSHOT_LIVE_EVIDENCE_DIR="$PWD/runs/snapshot-live-inspection" go test ./experiment -run TestNativeSnapshotLiveInspection -count=1 -v
+          WASMBENCH_SNAPSHOT_RETAINED_LIVE_EVIDENCE_DIR="$PWD/runs/snapshot-live-inspection" go test ./experiment -run TestRetainedNativeSnapshotInspection -count=1 -v
+          WASMBENCH_SNAPSHOT_LIVE_ADAPTER="$PWD/adapters/wasmtime/target/process-snapshot/release/qualify-process-snapshot" go test ./experiment -run TestNativeSnapshotMemoryTrial -count=1 -v
+      - run: cargo build --release --locked --manifest-path adapters/wasmtime/Cargo.toml --features native-allocator --target-dir adapters/wasmtime/target/allocator --bin adapter-wasmtime
+      - run: cargo test --release --locked --manifest-path adapters/wasmtime/Cargo.toml --features native-allocator --target-dir adapters/wasmtime/target/allocator --bin adapter-wasmtime allocator
+      - run: WASMBENCH_RUST_ALLOCATOR_TEST=1 go test ./experiment -run TestWasmtimeRustAllocator -count=1 -v
+      - run: go test ./corpus -run TestScalingIndependentAnalyzer -v
+      - run: make build
+      - run: ./bin/wasmbench check --runtimes wasmtime,wasmtime-winch --out runs/wasmtime-check
+      - run: WASMBENCH_DENSITY_TEST_RUNTIMES=wasmtime,wasmtime-winch,wasmtime-pooling go test ./experiment -run TestBuiltAdapterDensity -count=1 -v
+      - run: WASMBENCH_COMMAND_LIFECYCLE_TEST_RUNTIMES=wasmtime,wasmtime-winch go test ./experiment -run TestBuiltAdapterCommandLifecyclePhases -count=1 -v
+      - run: WASMBENCH_REACTOR_TEST_RUNTIMES=wasmtime,wasmtime-winch,wasmtime-pooling go test ./experiment -run TestBuiltAdapterReactors -count=1 -v
+      - run: WASMBENCH_ARCHIVE_TEST_RUNTIMES=wasmtime,wasmtime-winch,wasmtime-pooling go test ./experiment -run TestBuiltAdapterToolArchiveReplay -count=1 -v
+      - run: WASMBENCH_COUNTER_TEST_RUNTIMES=wasmtime,wasmtime-winch,wasmtime-pooling go test ./experiment -run TestBuiltAdapterCounters -count=1 -v
+      - run: WASMBENCH_FIRST_COUNTER_TEST_RUNTIMES=wasmtime,wasmtime-winch,wasmtime-pooling go test ./experiment -run TestBuiltAdapterFirstCallCounters -count=1 -v
+      - run: WASMBENCH_STEADY_COUNTER_TEST_RUNTIMES=wasmtime,wasmtime-winch,wasmtime-pooling go test ./experiment -run TestBuiltAdapterSteadyCounters -count=1 -v
+      - name: Float and lifecycle conformance
+        env:
+          WASMBENCH_FLOAT_TEST_RUNTIMES: wasmtime,wasmtime-winch
+          WASMBENCH_TEARDOWN_TEST_RUNTIMES: wasmtime,wasmtime-winch
+          WASMBENCH_APP_INIT_TEST_RUNTIMES: wasmtime,wasmtime-winch
+          WASMBENCH_AOT_TEST_RUNTIMES: wasmtime,wasmtime-winch
+          WASMBENCH_ENGINE_INIT_TEST_RUNTIMES: wasmtime,wasmtime-winch
+          WASMBENCH_HARNESS_TEST_RUNTIMES: wasmtime,wasmtime-winch
+          WASMBENCH_HOST_TEST_RUNTIMES: wasmtime,wasmtime-winch
+        run: go test -count=1 ./experiment -run 'TestBuiltAdapter(Float|Teardown|AppInit|AssemblyScript|AOT|EngineInit|Harness)' -v
+      - run: WASMBENCH_FEATURE_TEST_RUNTIMES=wazero,wazero-interpreter,wasmtime,wasmtime-winch go test ./experiment -run TestBuiltFeatureAdmission -v
+      - run: WASMBENCH_TRAP_TEST_RUNTIMES=wazero,wazero-interpreter,wasmtime,wasmtime-winch go test ./experiment -run TestBuiltAdapterTraps -v
+      - run: WASMBENCH_TRAJECTORY_TEST_RUNTIMES=wazero,wazero-interpreter,wasmtime,wasmtime-winch go test ./experiment -run TestBuiltAdapterTrajectory -v
+      - run: WASMBENCH_PHASE_TEST_RUNTIMES=wasmtime,wasmtime-winch go test ./experiment -run TestBuiltAdapter -v
+      - run: ./bin/wasmbench check --suite scaling --runtimes wasmtime,wasmtime-winch --out runs/wasmtime-scaling-check
+      - name: Retain Wasmtime qualification evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wasmtime-qualification-evidence
+          path: runs/

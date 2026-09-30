@@ -1,0 +1,13 @@
+(module
+  (import "wasi_snapshot_preview1" "fd_write" (func $write (param i32 i32 i32 i32) (result i32)))
+  (memory (export "memory") 1)
+  (global $used (mut i32) (i32.const 0))
+  (data (i32.const 32) "abcerr")
+  (func (export "_start")
+    (if (global.get $used) (then unreachable))
+    (global.set $used (i32.const 1))
+    (i32.store (i32.const 0) (i32.const 32))
+    (i32.store (i32.const 4) (i32.const 3))
+    (drop (call $write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 8)))
+    (i32.store (i32.const 0) (i32.const 35))
+    (drop (call $write (i32.const 2) (i32.const 0) (i32.const 1) (i32.const 8)))))

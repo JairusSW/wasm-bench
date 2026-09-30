@@ -1,0 +1,49 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,"><title>Wasmbench · Source compiler experiment</title>
+<style>
+:root{font:15px/1.5 system-ui,sans-serif;color:#dfe7f4;background:#101722;color-scheme:dark}*{box-sizing:border-box}body{margin:0}main{max-width:1100px;margin:auto;padding:40px 24px}h1{font-size:38px;letter-spacing:-.04em}h2{margin-top:32px}a{color:#92c7ff}.eyebrow{color:#72dcc6;font-size:12px;letter-spacing:.12em;text-transform:uppercase}.notice{border-left:3px solid #edb85f;background:#202534;padding:16px}.muted{color:#a5b2c7}.links{display:flex;gap:16px;flex-wrap:wrap}article{border-bottom:1px solid #354055;padding:20px 0}h3{overflow-wrap:anywhere}.value{font-size:26px;font-variant-numeric:tabular-nums}.bar{height:8px;background:#72dcc6;max-width:100%;margin:10px 0}label{display:inline-flex;gap:8px;align-items:center;margin:12px 16px 12px 0}select{font:inherit;background:#192335;color:inherit;padding:8px;border:1px solid #46546b;max-width:100%}pre{font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;background:#192335;padding:16px;max-height:400px;overflow:auto}summary{cursor:pointer}code{overflow-wrap:anywhere}footer{margin-top:28px;color:#a5b2c7;font-size:12px}@media(max-width:600px){main{padding:24px 16px}h1{font-size:30px}label{display:flex;flex-wrap:wrap}}
+h2,p{overflow-wrap:anywhere}
+</style></head><body><main>
+<header><div class="eyebrow">Wasmbench / Source toolchains</div><h1>Compiler costs, with correctness.</h1><p id="identity"></p><div class="links"><a href="data.json" download>Analysis dataset</a><a href="raw/benchmark.lock.json">Locked experiment</a><a href="raw/checksums.json">Source checksums</a><a href="checksums.json">Report checksums</a></div></header>
+<p class="notice">Exploratory trusted-local builds, not hermetic or officially qualified. Complete builds are the replication unit. Warmups and failures are retained but excluded from numeric summaries. Missing measurements are not zero.</p>
+<div class="links"><a href="compiler-builds.parquet" download>Build table (Parquet)</a><a href="compiler-steps.parquet" download>Step diagnostics (Parquet)</a></div>
+<h2 id="metric"></h2><p id="boundary"></p><section id="summaries"></section>
+<h2>Paired comparisons</h2><section id="comparisons"></section>
+<h2>Correctness admission</h2><section id="admissions"></section>
+<h2>Build evidence</h2><label for="variant">Variant <select id="variant"><option value="">All variants</option></select></label><label><input type="checkbox" id="warmup" checked>Show retained warmups</label><label><input type="checkbox" id="failures">Failures only</label><section id="trials" aria-live="polite"></section>
+<details><summary>Method, resource policy and reproduction</summary><pre id="method"></pre></details>
+<footer>Replay an admitted experiment with its recorded runner and compatible host: <code>wasmbench source-bench-replay --bundle raw --out new-replay</code>. Exact compiler/runtime binaries must still be available. Failed admission bundles cannot be replayed as admitted experiments.</footer>
+</main><script>
+'use strict';
+const data={{.Data}}, report=data.report, run=report.evidence;
+const node=(tag,text)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e};
+const fmt=n=>Number.isFinite(n)?n.toLocaleString('en-US',{maximumFractionDigits:2})+' '+report.metric.unit:'Unavailable';
+const ratio=n=>Number.isFinite(n)?n.toFixed(3)+'×':'Unavailable';
+const detail=(title,value)=>{const d=node('details');d.append(node('summary',title),node('pre',JSON.stringify(value,null,2)));return d};
+const link=(title,path)=>{const a=node('a',title);a.href=path;return a};
+const rawPath=p=>'raw/'+p.split('/').map(encodeURIComponent).join('/');
+const val=s=>report.metric.unit==='bytes'?s.median_bytes_max_step_peak:s.median_ns_per_build;
+document.getElementById('identity').textContent=(run.config.profile||'timing')+' pass · '+run.status+' · '+run.config.blocks+' planned measurement blocks';
+document.getElementById('metric').textContent=report.metric.name;
+document.getElementById('boundary').textContent=report.metric.boundary;
+const maximum=Math.max(1,...report.summaries.map(val).filter(Number.isFinite));
+for(const [i,s] of report.summaries.entries()){
+ const card=node('article');card.append(node('h3',s.variant),node('div',fmt(val(s))));card.lastChild.className='value';
+ if(Number.isFinite(val(s))){const bar=node('div');bar.className='bar';bar.style.width=100*val(s)/maximum+'%';bar.setAttribute('aria-hidden','true');card.append(bar)}
+ card.append(node('p','Median · 95% interval '+fmt(s.ci95_low)+' – '+fmt(s.ci95_high)),node('p',s.successful_builds+' successful measured builds · '+(s.missing_measurements||0)+' missing readings · '+s.status),detail('Outcomes and retained warmups',{outcomes:s.outcomes,warmups:s.warmup_outcomes}),detail('Source, tool hashes, flags and oracle',run.config.variants[i]));document.getElementById('summaries').append(card);
+ const option=node('option',s.variant);option.value=String(i);document.getElementById('variant').append(option);
+}
+for(const c of report.comparisons){const card=node('article');card.append(node('h3',c.candidate+' / '+c.baseline),node('p',ratio(c.candidate_over_baseline)+' · 95% interval '+ratio(c.ci95_low)+' – '+ratio(c.ci95_high)+' · '+c.paired_blocks+' paired blocks · '+c.status));document.getElementById('comparisons').append(card)}
+if(!report.comparisons.length)document.getElementById('comparisons').append(node('p','No variant pairs available.'));
+for(const a of run.admissions){const card=node('article');card.append(node('h3',run.config.variants[a.variant].recipe.id+' · '+a.status));if(a.reason)card.append(node('p',a.reason));if(a.status==='ok'){const links=node('div');links.className='links';links.append(link('Validated build',rawPath(a.build_bundle)+'/build.json'),link('Runtime correctness run',rawPath(a.correctness_bundle)+'/manifest.json'));card.append(links)}if(a.failed_build_result){card.append(detail('Partial failed build receipt',a.failed_build_result));const logs=node('div');logs.className='links';for(const step of a.failed_build_result.steps||[])logs.append(link(step.tool+' failure log',rawPath(a.build_bundle)+'/'+encodeURIComponent(step.log)));card.append(logs)}card.append(detail('Admission metadata',a));document.getElementById('admissions').append(card)}
+function render(){const root=document.getElementById('trials');root.replaceChildren();const selected=document.getElementById('variant').value;let count=0;
+ for(const t of run.trials||[]){if(selected!==''&&t.variant!==Number(selected)||t.warmup&&!document.getElementById('warmup').checked||document.getElementById('failures').checked&&t.status==='ok')continue;count++;
+ const card=node('article');card.append(node('h3',run.config.variants[t.variant].recipe.id+' · block '+t.block+(t.warmup?' · warmup':'')),node('p',t.status+(t.reason?' · '+t.reason:'')));
+ const reading=run.config.profile==='memory'?t.max_step_cgroup_peak_bytes:run.config.profile==='cpu'?t.summed_tool_wait_cpu_ns:t.summed_tool_process_wall_ns;
+ card.append(node('p',t.status==='ok'?fmt(reading):'No performance sample'));
+ if(t.status==='ok')card.append(link('Verified build receipt',rawPath(t.build_bundle)+'/build.json'));
+ const logs=node('div');logs.className='links';for(const s of t.build_result?.steps||[])logs.append(link(s.tool+' log',rawPath(t.build_bundle)+'/'+encodeURIComponent(s.log)));card.append(logs,detail('Steps, collectors and raw evidence',t));root.append(card);
+ }if(!count)root.append(node('p',run.status==='admission_failed'?'No measured builds: correctness admission failed.':'No builds match these filters.'));
+}
+for(const id of ['variant','warmup','failures'])document.getElementById(id).addEventListener('change',render);render();
+document.getElementById('method').textContent=JSON.stringify({analysis_version:report.analysis_version,metric:report.metric,interpretation:report.interpretation,measurement:run.interpretation,host:run.host,resources:run.config.resources||null,reproduction:run.reproduction||null,source_checksums_sha256:data.source_checksums_sha256},null,2);
+</script></body></html>

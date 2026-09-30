@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,"><title>Wasmbench · Runtime history</title>
+<style>
+:root{font:15px/1.5 system-ui,sans-serif;color:#dfe7f4;background:#101722;color-scheme:dark}*{box-sizing:border-box}body{margin:0}main{max-width:1100px;margin:auto;padding:40px 24px}h1{font-size:38px;letter-spacing:-.04em}h2{font-size:22px}a{color:#92c7ff}.eyebrow{color:#72dcc6;letter-spacing:.12em;text-transform:uppercase;font-size:12px}.notice{border-left:3px solid #edb85f;background:#202534;padding:16px}.muted{color:#a5b2c7}label{display:block;margin:26px 0 8px}select{font:inherit;padding:10px;width:100%;background:#192335;border:1px solid #46546b;border-radius:5px;color:inherit}article{padding:20px 0;border-bottom:1px solid #354055}h3{margin:0 0 8px;overflow-wrap:anywhere}.plot{height:28px;position:relative;margin:12px 0;background:#192335;border-radius:4px}.range{position:absolute;height:4px;top:12px;background:#72dcc6}.dot{position:absolute;width:12px;height:12px;top:8px;background:#72dcc6;border-radius:50%;transform:translateX(-50%)}.reference{position:absolute;top:0;height:28px;border-left:1px dashed #899bb5}.links{display:flex;gap:18px;flex-wrap:wrap}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#192335;padding:16px;max-height:400px;overflow:auto;font-size:12px}summary{cursor:pointer}footer{margin-top:30px;font-size:12px;color:#a5b2c7}@media(max-width:600px){main{padding:24px 16px}h1{font-size:30px}}
+</style></head><body><main>
+<header><div class="eyebrow">Wasmbench / Experiment history</div><h1>Runtime changes, with evidence.</h1><p id="identity"></p><div class="links"><a href="data.json" download>Analysis dataset</a><a href="checksums.json">Report checksums</a></div></header>
+<p class="notice">Exploratory observations, not causal regression findings. Input order is explicit; dates do not establish revision ancestry. Missing values are gaps, never zero. Independent 95% intervals are not corrected for multiple comparisons.</p>
+<label for="cell">Workload / lifecycle scenario</label><select id="cell"></select>
+<p id="axis" class="muted"></p><section id="points" aria-live="polite"></section>
+<details><summary>Method and interpretation</summary><p id="method"></p></details>
+<footer>Raw bundles are included. Reproduce with the recorded runner and compatible host using <code>wasmbench reproduce &lt;raw bundle path&gt;</code>. Copying a report does not supply the original compiler binaries or control the host.</footer>
+</main><script>
+'use strict';
+const data={{.Data}};
+const node=(tag,text)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e};
+const cells=new Map();
+for(const p of data.points){for(const s of [...(p.timing_summaries||[]),...(p.comparison?.results||[])]){const key=JSON.stringify([s.workload,s.scenario]);cells.set(key,s.workload+' / '+s.scenario)}}
+const choice=document.getElementById('cell');
+for(const [key,label] of cells) { const option=node('option',label);option.value=key;choice.append(option); }
+document.getElementById('identity').textContent=data.runtime+' · fixed baseline: '+data.baseline_run+' · '+data.points.length+' recorded runs';
+document.getElementById('method').textContent=data.analysis_version+' — '+data.interpretation;
+const format=n=>Number.isFinite(n)?n.toFixed(3)+'×':'Unavailable';
+function render(){
+ const root=document.getElementById('points');root.replaceChildren();
+ if(!choice.value){root.append(node('p','No workload cells are available.'));return;}
+ const [workload,scenario]=JSON.parse(choice.value);
+ const rows=data.points.map(p=>({p,r:p.comparison?.results.find(r=>r.workload===workload&&r.scenario===scenario)}));
+ const max=Math.max(1,...rows.flatMap(({r})=>[r?.candidate_over_baseline,r?.ci95_high].filter(Number.isFinite)))*1.1;
+ document.getElementById('axis').textContent='Candidate / fixed-baseline latency ratio · lower is faster · scale 0–'+max.toFixed(3)+'× · dashed marker is 1×. Each row is independent; gaps are not connected.';
+ for(const {p,r} of rows){
+  const card=node('article');card.append(node('h3',(p.position+1)+'. '+p.manifest.id));
+  const summary=(p.timing_summaries||[]).find(s=>s.workload===workload&&s.scenario===scenario);
+  const ratio=p.position===0?null:r?.candidate_over_baseline;
+  card.append(node('p',p.position===0?'Baseline reference; no self-comparison estimate.':(r?.status||p.status)+' · '+(r?.reason||p.reason||format(ratio))));
+  if(Number.isFinite(ratio)){
+   const plot=node('div');plot.className='plot';plot.setAttribute('role','img');plot.setAttribute('aria-label','Ratio '+format(ratio)+'; 95% interval '+format(r.ci95_low)+' to '+format(r.ci95_high));
+   const ref=node('span');ref.className='reference';ref.style.left=100/max+'%';plot.append(ref);
+   if(Number.isFinite(r.ci95_low)&&Number.isFinite(r.ci95_high)){const line=node('span');line.className='range';line.style.left=100*r.ci95_low/max+'%';line.style.width=100*(r.ci95_high-r.ci95_low)/max+'%';plot.append(line);}
+   const dot=node('span');dot.className='dot';dot.style.left=100*ratio/max+'%';plot.append(dot);card.append(plot,node('p','Ratio '+format(ratio)+' · 95% interval '+format(r.ci95_low)+' – '+format(r.ci95_high)+' · successful launches '+r.baseline_launches+' / '+r.candidate_launches));
+  }
+  const links=node('div');links.className='links';const base='raw/'+String(p.position).padStart(3,'0');
+  for(const [label,path] of [['Locked run',base+'/manifest.json'],['Raw trials','trials-'+String(p.position).padStart(3,'0')+'.json'],['Evidence checksums',base+'/checksums.json']]){const a=node('a',label);a.href=path;links.append(a)}card.append(links);
+  const detail=node('details');detail.append(node('summary','Absolute timing, outcomes and configuration'),node('pre',JSON.stringify({summary:summary||null,comparison:r||null,manifest:p.manifest,evidence:data.evidence[p.position]},null,2)));card.append(detail);root.append(card);
+ }
+}
+choice.addEventListener('change',render);render();
+</script></body></html>

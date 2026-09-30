@@ -1,0 +1,8 @@
+* text=auto eol=lf
+
+# Pinned fixture hashes must survive checkout unchanged on every platform.
+*.wasm -text -diff
+corpus/testdata/** -text
+adapters/wazero/testdata/** -text
+recipes/fixtures/** -text
+recipes/source/** -text

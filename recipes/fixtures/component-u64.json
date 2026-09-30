@@ -1,0 +1,21 @@
+[
+  {
+    "schema": 1,
+    "id": "components/u64-state-reset",
+    "family": "mechanisms",
+    "artifact": "component-u64.wasm",
+    "sha256": "b05af922a05149231ed22739179f9a97589a555a5a658cc402dc9ce99a39bf27",
+    "abi": "component",
+    "host_profile": "component-u64-v1",
+    "features": ["component-model"],
+    "export": "benchmark",
+    "args": ["7"],
+    "work_unit": "invocation",
+    "units_per_invocation": 1,
+    "reset": "fresh_instance_per_sample",
+    "oracle": {"kind": "exact_u64", "expected": ["8"]},
+    "license": "MIT",
+    "source": "recipes/fixtures/component-u64.wat",
+    "generator": "wat 1.251.0"
+  }
+]

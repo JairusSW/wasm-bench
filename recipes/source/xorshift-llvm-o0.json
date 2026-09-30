@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "id": "llvm-xorshift-o0",
+  "source_revision": "wasmbench-xorshift-v1",
+  "license": "MIT",
+  "inputs": {"xorshift.c": {"path": "xorshift.c"}},
+  "tools": {
+    "clang": {"path": "/opt/homebrew/opt/llvm/bin/clang"},
+    "linker": {"path": "/opt/homebrew/bin/wasm-ld"}
+  },
+  "environment": {"SOURCE_DATE_EPOCH": "0"},
+  "steps": [
+    {"tool": "clang", "args": ["--no-default-config", "--target=wasm32-unknown-unknown", "-mcpu=mvp", "-ffreestanding", "-fno-builtin", "-nostdinc", "-O0", "-c", "xorshift.c", "-o", "xorshift.o"]},
+    {"tool": "linker", "args": ["--no-entry", "--export=benchmark", "--export-memory", "xorshift.o", "-o", "module.wasm"]}
+  ],
+  "output": "module.wasm",
+  "workload": {
+    "schema": 1,
+    "id": "algorithms/xorshift",
+    "family": "algorithms",
+    "abi": "core",
+    "features": ["mvp"],
+    "export": "benchmark",
+    "args": ["1000"],
+    "work_unit": "prng_step",
+    "units_per_invocation": 1000,
+    "reset": "stateless",
+    "oracle": {"kind": "exact_u64", "expected": ["3789097413"]}
+  }
+}

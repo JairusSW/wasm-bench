@@ -1,0 +1,23 @@
+;; SPDX-License-Identifier: MIT
+;; Start, initialization, input installation, and workload must occur in order.
+(module
+  (memory (export "memory") 1)
+  (global $state (mut i32) (i32.const 0))
+  (func $start (global.set $state (i32.const 1)))
+  (start $start)
+  (func (export "initialize")
+    (if (i32.ne (global.get $state) (i32.const 1)) (then unreachable))
+    (if (i32.load (i32.const 128)) (then unreachable))
+    (i32.store (i32.const 64) (i32.const 42))
+    (global.set $state (i32.const 2)))
+  (func (export "input_ptr") (result i32)
+    (if (i32.ne (global.get $state) (i32.const 2)) (then unreachable))
+    (i32.const 128))
+  (func (export "benchmark") (result i32)
+    (if (i32.ne (global.get $state) (i32.const 2)) (then unreachable))
+    (global.set $state (i32.const 3))
+    (i32.load (i32.const 128)))
+  (func (export "trap_init") unreachable)
+  (func (export "param_init") (param i32))
+  (func (export "result_init") (result i32) (i32.const 0))
+)

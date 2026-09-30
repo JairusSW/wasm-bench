@@ -1,0 +1,13 @@
+.git
+.wasmbench
+.playwright-cli
+bin
+runs
+reports
+output
+adapters/wasmtime/target
+builds
+graphify-out
+.graphify
+*.seed
+operator-private*

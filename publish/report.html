@@ -1,0 +1,1015 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="data:,"><title>Wasmbench · Experiment report</title>
+<style>
+:root{font:15px/1.5 system-ui,sans-serif;color:#dfe7f4;background:#101722;color-scheme:dark}*{box-sizing:border-box}body{margin:0}[hidden]{display:none!important}main{max-width:1240px;margin:auto;padding:42px 28px}a{color:#92c7ff}header{border-bottom:1px solid #354055;padding-bottom:24px}.eyebrow{color:#72dcc6;letter-spacing:.16em;font-size:12px;text-transform:uppercase}h1{font-size:42px;letter-spacing:-.04em;margin:10px 0}h2{font-size:22px;margin-top:32px}.muted{color:#a5b2c7}.notice{border-left:3px solid #edb85f;background:#202534;padding:14px 18px;margin:20px 0}.controls{display:flex;gap:16px;flex-wrap:wrap;margin:24px 0}label{display:grid;gap:5px;font-size:12px;color:#a5b2c7}select,input{padding:10px;border:1px solid #46546b;border-radius:5px;background:#192335;color:#e8edf5;font:inherit}table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}th{text-align:left;color:#a5b2c7;font-size:12px}th,td{padding:13px 12px;border-bottom:1px solid #2b3648}td:first-child{min-width:200px}.tablewrap{overflow:auto}button{color:#92c7ff;background:none;border:0;padding:0;cursor:pointer;text-align:left;font:inherit}.bar{height:7px;background:#70cbbb;border-radius:3px;margin-top:5px;min-width:1px}.badge{display:inline-block;border:1px solid #46546b;border-radius:20px;padding:2px 9px;font-size:12px}.stats{display:flex;gap:30px;flex-wrap:wrap;margin:22px 0}.stats strong{font-size:25px;display:block}.stats span{font-size:12px;color:#a5b2c7}pre{overflow:auto;padding:18px;background:#172030;border-radius:6px;font-size:12px;max-height:460px}details{margin:18px 0}summary{cursor:pointer}#detail{border:1px solid #3c4c61;border-radius:8px;padding:20px;margin-top:25px;display:none}svg{width:100%;height:180px;background:#172030;border-radius:6px}footer{margin-top:40px;color:#a5b2c7;font-size:12px}.links{display:flex;gap:18px;flex-wrap:wrap}code{font-size:12px}@media(max-width:600px){main{padding:24px 15px}h1{font-size:32px}.stats{gap:18px}}
+#scaling label{min-width:0}#scaling-choice{width:100%;min-width:0;max-width:100%}#scaling-chart p{overflow-wrap:anywhere}
+#harness-view label{min-width:0}#harness-view select{width:100%;min-width:0;max-width:100%}#harness-evidence p{overflow-wrap:anywhere}
+.scaling-filters{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}.scaling-filters label{flex:1;min-width:180px!important}.scaling-filters select{width:100%}#scaling-coverage{font-size:12px;color:#aab3bb}#memory-exports{font-size:12px}
+#break-even-choice{width:100%;min-width:0;max-width:100%}#break-even-chart p{overflow-wrap:anywhere}
+#memory-timeline select{width:100%;min-width:0;max-width:100%}#memory-timeline p{overflow-wrap:anywhere}#memory-timeline label{margin:12px 0;min-width:0}
+#sustained-view select{width:100%;min-width:0;max-width:100%}#sustained-view label{margin:12px 0;min-width:0}#sustained-view p{overflow-wrap:anywhere}
+#rust-allocator-view select{width:100%;min-width:0;max-width:100%}#rust-allocator-view label{margin:12px 0;min-width:0}#rust-allocator-view p{overflow-wrap:anywhere}
+#counter-evidence select{width:100%;min-width:0;max-width:100%}#counter-evidence p,#cpu-profile-list p{overflow-wrap:anywhere}#counter-evidence label{margin:12px 0}
+#cpu-stack-view select{width:100%;min-width:0}#cpu-stack-view label{margin:12px 0}#cpu-stack-chart{max-height:500px;overflow:auto}#cpu-stack-chart svg{display:block;min-width:800px;width:100%;height:auto}#cpu-stack-context{overflow-wrap:anywhere}
+#admission code{display:block;max-width:28em;overflow-wrap:anywhere}@media(max-width:600px){#admission thead{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}#admission table,#admission tbody,#admission tr,#admission td{display:block}#admission tr{border-bottom:1px solid #46546b;padding:10px 0}#admission td{border:0;padding:6px 0;min-width:0}#admission td:not(:first-child)::before{content:attr(data-label);display:block;font-size:12px;color:#a5b2c7}}
+.hero{border:0;padding:0 0 20px}.topline{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:36px}.brand{color:#f4f7fb;font-weight:800;font-size:19px;letter-spacing:-.05em}.topline .links{font-size:13px}.hero h1{max-width:950px;font-size:clamp(38px,5vw,62px);line-height:1.07;margin:10px 0 14px}.hero-copy{max-width:750px;font-size:17px;color:#b7c5d8;line-height:1.5;margin:0}.hero #identity{margin:14px 0 0;font-size:13px}.overview{margin:16px 0 56px}.overview-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:14px}.overview-heading h2{font-size:31px;letter-spacing:-.04em;margin:0 0 7px}.overview-heading p{margin:0}.overview-count{font-size:13px;color:#a5b2c7;white-space:nowrap}.overview-card{border:1px solid #34435a;background:linear-gradient(150deg,#1b273a,#151e2d);border-radius:16px;padding:24px}.overview-controls{display:flex;gap:16px;flex-wrap:wrap;align-items:end;margin-bottom:17px}.overview-controls label{flex:1 1 240px;font-size:13px}.overview-controls select{width:100%;border-radius:9px;min-height:46px}.overview-context{color:#bdcadd;font-size:13px;margin:0 0 18px}.overview-list{list-style:none;padding:0;margin:0}.overview-row{display:grid;grid-template-columns:42px minmax(200px,1fr) minmax(150px,1fr) minmax(130px,auto);align-items:center;gap:18px;padding:19px 12px;border-top:1px solid #34435a}.overview-rank{color:#83d7c9;font-size:21px;font-weight:750;font-variant-numeric:tabular-nums}.overview-name{font-size:17px;font-weight:670;color:#f4f7fb}.overview-meta{display:block;font-size:12px;color:#a5b2c7;font-weight:400;margin-top:3px}.overview-track{height:9px;background:#2c3c52;border-radius:12px;overflow:hidden}.overview-track span{display:block;height:100%;border-radius:12px;background:#74d6c3}.overview-value{text-align:right;font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}.overview-value small{display:block;font-size:12px;color:#a5b2c7;font-weight:400;white-space:normal}.overview-row.unavailable .overview-rank{color:#73859c}.overview-row.unavailable .overview-value{font-size:15px;color:#a5b2c7}.overview-foot{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;margin:22px 0 0;color:#a5b2c7;font-size:12px}.overview-foot p{margin:0;max-width:850px}.overview-row button{font-weight:inherit;color:inherit}.overview-row button:hover,.overview-row button:focus-visible{text-decoration:underline}.evidence-panel{border-top:1px solid #34435a;padding-top:18px}.evidence-panel>summary{font-size:20px;font-weight:700;list-style:none;display:flex;align-items:center;justify-content:space-between}.evidence-panel>summary::after{content:'+';font-size:30px;font-weight:400;color:#8fcbff}.evidence-panel[open]>summary::after{content:'−'}.evidence-panel>summary::-webkit-details-marker{display:none}.evidence-inner{padding-top:15px}.evidence-inner .notice{font-size:13px}.overview-card .notice{margin:16px 0 0;font-size:12px}.overview-card .notice a{color:#9fd8ff}@media(max-width:720px){.topline{margin-bottom:30px;align-items:flex-start}.topline .links{justify-content:flex-end}.hero-copy{font-size:16px}.overview-card{padding:16px}.overview-heading{display:block}.overview-count{display:block;margin-top:8px}.overview-row{grid-template-columns:28px minmax(0,1fr) auto;gap:8px;padding:16px 2px}.overview-row .overview-track{grid-column:2/4;grid-row:2}.overview-name{font-size:14px;overflow-wrap:anywhere}.overview-value{font-size:17px}.overview-meta{font-size:11px}.overview-foot{display:block}}
+/* Overview: a compact engine filter and per-workload comparison board. */
+:root{color:#edf0f3;background:#141719;color-scheme:dark}
+main{max-width:1500px;padding:28px 32px}a,button{color:#9ed2ff}.muted{color:#aab3bb}
+.hero{padding-bottom:22px;border-bottom:1px solid #3b4146}.topline{margin-bottom:24px}.hero h1{font-size:clamp(34px,4vw,52px);margin:8px 0 10px}.hero-copy{font-size:16px;color:#bfc7cd}.brand{color:#f4f6f7}
+.overview{margin:24px 0 44px}.overview-heading{align-items:center;margin-bottom:20px}.overview-heading h2{font-size:30px}.overview-count{color:#aab3bb}
+.board{display:grid;grid-template-columns:244px minmax(0,1fr);gap:30px;align-items:start}.runtime-filter{position:sticky;top:20px;border-top:2px solid #68737c;padding-top:15px}.runtime-filter h3{font-size:17px;margin:0 0 12px}.runtime-filter p{font-size:12px;color:#aab3bb;margin:12px 0}.filter-list{display:grid;gap:2px}.filter-item{display:flex;align-items:center;gap:9px;padding:6px 5px;color:#e5e9ed;font-size:13px;cursor:pointer;min-width:0}.filter-item:hover{background:#24292d}.filter-item input{margin:0;accent-color:#60c6c2}.filter-item .swatch{width:10px;height:10px;border-radius:2px;flex:none}.filter-item span:last-child{overflow-wrap:anywhere}.filter-count{font-variant-numeric:tabular-nums;color:#aab3bb;margin-left:auto;font-size:11px}.board-main{min-width:0}.board-toolbar{display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin-bottom:10px}.board-toolbar label{min-width:180px;flex:1;font-size:12px;color:#adb8c0}.board-toolbar label:first-child{max-width:260px}.board-toolbar select,.board-toolbar input{width:100%;height:40px;background:#242a2e;border:1px solid #4a555d;border-radius:4px;color:#f4f6f7}.board-context{font-size:12px;color:#b9c4cb;margin:10px 0 20px}.family-heading{display:flex;gap:12px;align-items:center;border-bottom:1px solid #495158;margin:23px 0 13px;padding-bottom:7px}.family-heading h3{margin:0;font-size:19px}.family-heading span{font-size:12px;color:#9ba8b0}.workload-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.workload-card{border:1px solid #4a5156;background:#1d2226;padding:13px 14px 12px;min-width:0}.workload-card h4{font-size:16px;margin:0;line-height:1.3;overflow-wrap:anywhere}.workload-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}.workload-card-head span{color:#aeb9c0;font-size:11px;white-space:nowrap}.runtime-bars{list-style:none;padding:0;margin:0;display:grid;gap:4px}.runtime-bar{position:relative;min-height:28px;background:#31383d;overflow:hidden}.runtime-bar-fill{position:absolute;inset:0 auto 0 0;opacity:.9}.runtime-bar-button{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:28px;padding:4px 7px;color:#fff;font-size:12px;font-weight:700;text-shadow:0 1px 1px #121618;background:transparent;overflow-wrap:anywhere}.runtime-bar-button:hover,.runtime-bar-button:focus-visible{outline:2px solid #e7f3ff;outline-offset:-2px;text-decoration:none}.runtime-bar-button .bar-value{white-space:nowrap;font-variant-numeric:tabular-nums}.runtime-bar.unavailable .runtime-bar-button{color:#b6c0c7;font-weight:500}.runtime-bar.unavailable .runtime-bar-fill{background:#555!important}.board-footer{font-size:12px;color:#aeb8be;border-top:1px solid #434b51;padding-top:15px;margin:22px 0}.board-footer a{white-space:nowrap}.board-note{font-size:12px;background:#252b2f;border-left:3px solid #d3a152;padding:10px 12px;margin:16px 0}.evidence-panel{border-top:1px solid #495158}.evidence-panel>summary::after{color:#9ed2ff}
+@media(max-width:1050px){.workload-grid{grid-template-columns:1fr}.board{grid-template-columns:205px minmax(0,1fr)}}
+@media(max-width:720px){main{padding:20px 16px}.topline{margin-bottom:22px}.topline .links{gap:9px;font-size:11px}.hero h1{font-size:34px}.overview-heading{display:block}.board{grid-template-columns:1fr;gap:18px}.runtime-filter{position:static;padding-top:10px}.filter-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 6px}.filter-item{font-size:12px}.filter-count{display:none}.board-toolbar label:first-child{max-width:none}.workload-grid{grid-template-columns:1fr}.workload-card{padding:11px}.family-heading{margin-top:18px}}
+@media(max-width:720px){.overview-heading .eyebrow,.overview-heading p,.runtime-filter p:not([role]){display:none}.overview-heading h2{font-size:25px}.overview-heading{margin-bottom:12px}.runtime-filter h3{margin-bottom:5px}.filter-item{padding:4px 2px}.board{gap:12px}.hero-copy{max-width:330px}}
+.board-toolbar label:first-child{max-width:none}.stage-legend{display:flex;align-items:center;gap:7px 15px;flex-wrap:wrap;font-size:12px;color:#c6d0d6;margin:0 0 9px}.stage-key{display:inline-flex;align-items:center;gap:6px}.stage-key i{display:inline-block;width:17px;height:11px;border:1px solid #ffffff55}.stage-key .compile{background:#59a9db}.stage-key .instantiate{background:#af8fe0}.stage-key .execution{background:#65c7b4}.stage-key .first-call{background:repeating-linear-gradient(135deg,#65c7b4 0 5px,#328c7c 5px 9px)}
+.stage-key .other{background:#d5ad69}
+.board-toolbar .stage-option{white-space:nowrap;min-width:0;flex:none}.board-toolbar .stage-option input{width:15px;height:15px;min-width:15px;padding:0}
+.memory-toolbar{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:11px 0 13px;border-top:1px solid #404a50;padding-top:10px}.memory-toolbar label{min-width:210px;max-width:330px;flex:1;color:#c1cbd1}.memory-toolbar select{width:100%;height:36px;background:#242a2e;border:1px solid #4a555d;border-radius:4px;color:#f4f6f7}.memory-source{font-size:11px;color:#aebbc2;flex:2;margin:0 0 4px}.composite-segment:last-child .bar-tooltip{left:auto;right:0}
+@media(max-width:720px){.memory-source{flex-basis:100%}}
+.headline-chart{border:1px solid #536068;background:#1b2226;padding:17px 18px 14px;margin:18px 0 26px}.headline-chart-head{display:flex;justify-content:space-between;align-items:end;gap:14px;flex-wrap:wrap;margin-bottom:12px}.headline-chart h3{font-size:22px;margin:0}.headline-chart-head label{min-width:220px;color:#c1cbd1}.headline-chart select{height:37px;background:#242a2e;border:1px solid #4a555d;border-radius:4px;color:#f4f6f7}.headline-chart-note{font-size:11px;color:#aebbc2;margin:0 0 12px}.headline-chart-grid{display:grid;gap:5px}.headline-chart-row{display:grid;grid-template-columns:minmax(100px,150px) repeat(4,minmax(0,1fr));gap:10px;align-items:center;padding:9px 0;border-top:1px solid #3b464c}.headline-chart-row.headings{padding:3px 0 8px;border:0;color:#b9c7ce;font-size:11px;text-transform:uppercase;letter-spacing:.05em}.headline-chart-runtime{font-weight:750;font-size:13px;overflow-wrap:anywhere}.headline-chart-cell{min-width:0;display:block;width:100%;color:#edf3f5;text-align:left}.headline-chart-cell:not(.missing):hover,.headline-chart-cell:not(.missing):focus-visible{outline:1px solid #dceef5;outline-offset:3px}.headline-chart-cell small{display:none;color:#b6c4ca}.headline-chart-value{display:block;font-size:13px;font-variant-numeric:tabular-nums;font-weight:750;white-space:nowrap}.headline-chart-track{display:block;height:11px;background:#30393e;margin-top:5px;overflow:hidden}.headline-chart-fill{display:block;height:100%;min-width:2px}.headline-chart-cell.compile .headline-chart-fill{background:#59a9db}.headline-chart-cell.instantiate .headline-chart-fill{background:#af8fe0}.headline-chart-cell.execution .headline-chart-fill{background:repeating-linear-gradient(135deg,#65c7b4 0 5px,#328c7c 5px 9px)}.headline-chart-cell.rss .headline-chart-fill{background:#d5ad69}.headline-chart-cell.missing{color:#93a2aa}.headline-chart-cell.missing .headline-chart-track{background:repeating-linear-gradient(135deg,#2d363b 0 5px,#263035 5px 10px)}
+.headline-chart-grid{overflow-x:auto}.headline-chart-row{grid-template-columns:minmax(100px,150px) repeat(var(--chart-cols,4),minmax(125px,1fr));min-width:max(100%,calc(150px + 125px * var(--chart-cols,4)))}.headline-chart-cell.first-call .headline-chart-fill{background:repeating-linear-gradient(135deg,#65c7b4 0 5px,#328c7c 5px 9px)}.headline-chart-cell.other .headline-chart-fill{background:#9dbb7f}
+.headline-memory-detail{border-top:1px solid #536068;margin-top:14px;padding-top:10px;font-size:12px}.headline-memory-detail h4{font-size:15px;margin:0 0 4px}.headline-memory-detail p{margin:4px 0;color:#bdcbd2}.headline-memory-detail ul{margin:8px 0 0;padding-left:20px;max-height:180px;overflow:auto}.headline-memory-detail li{margin:3px 0}.headline-memory-detail button{float:right}
+@media(max-width:720px){.headline-chart{padding:13px}.headline-chart-row.headings{display:none}.headline-chart-row{grid-template-columns:repeat(2,minmax(0,1fr));min-width:0;gap:9px 12px}.headline-chart-runtime{grid-column:1/-1}.headline-chart-cell small{display:block;font-size:10px}.headline-chart-value{font-size:12px}}
+.board-toolbar{align-items:stretch}.stage-picker{border:1px solid #485259;padding:7px 10px 9px;margin:0;min-width:0;flex:2}.stage-picker legend{color:#c7d1d7;font-size:12px;padding:0 5px}.stage-options{display:flex;gap:5px 14px;flex-wrap:wrap}.stage-option{display:inline-flex;align-items:center;gap:6px;color:#e7edef;cursor:pointer;font-size:12px}.stage-option input{margin:0;accent-color:#60c6c2}.stage-option i{width:14px;height:10px;border:1px solid #ffffff55}.stage-option .compile{background:#59a9db}.stage-option .instantiate{background:#af8fe0}.stage-option .first-call{background:repeating-linear-gradient(135deg,#65c7b4 0 5px,#328c7c 5px 9px)}.stage-option .execution{background:#65c7b4}.stage-option .other{background:#d5ad69}.board-toolbar .search-label{flex:1;min-width:180px}
+.composite-bars{list-style:none;padding:0;margin:0;display:grid;gap:6px}.composite-row{display:grid;grid-template-columns:minmax(100px,135px) minmax(0,1fr) auto;gap:8px;align-items:center;min-height:30px;font-size:11px}.composite-name{overflow-wrap:anywhere;color:#ebf1f4;font-weight:700}.composite-track{display:flex;height:20px;min-width:0;background:#30383d;position:relative}.composite-segment{height:100%;min-width:2px;border:0;padding:0;position:relative;flex:none}.composite-segment.compile{background:#59a9db}.composite-segment.instantiate{background:#af8fe0}.composite-segment.first-call{background:repeating-linear-gradient(135deg,#65c7b4 0 5px,#328c7c 5px 9px)}.composite-segment.execution{background:#65c7b4}.composite-segment.other{background:#d5ad69}.composite-segment:hover,.composite-segment:focus-visible{outline:2px solid #fff;outline-offset:2px;z-index:4}.composite-segment:hover .bar-tooltip,.composite-segment:focus-visible .bar-tooltip{display:block}.composite-value{font-variant-numeric:tabular-nums;color:#ecf2f5;white-space:nowrap;font-weight:700}.composite-row.incomplete .composite-name,.composite-row.incomplete .composite-value{color:#aab6bc}.composite-row.incomplete .composite-track{background:repeating-linear-gradient(135deg,#364047 0 5px,#30383d 5px 10px)}.composite-segment .bar-tooltip{top:calc(100% + 5px);left:0;text-align:left;font-weight:400;white-space:normal}.composite-row:nth-last-child(-n+2) .bar-tooltip{top:auto;bottom:calc(100% + 5px)}
+@media(max-width:720px){.board-toolbar{display:block}.board-toolbar .search-label{margin-top:8px}.composite-row{grid-template-columns:minmax(0,1fr) auto;gap:2px 8px}.composite-track{grid-column:1/3;grid-row:2}.composite-segment .bar-tooltip{left:0;right:auto}}
+.stage-group{border-top:1px solid #424c52;padding-top:8px;margin-top:11px}.stage-group:first-of-type{margin-top:0}.stage-group h5{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#dbe3e8;margin:0 0 8px}.stage-phase{margin:9px 0 5px;color:#b7c3ca;font-size:11px}.stage-group .runtime-bars{gap:3px}.stage-group .runtime-bar{min-height:24px;overflow:visible}.stage-group .runtime-bar-button{min-height:24px;padding:3px 7px;font-size:11px}.stage-group .runtime-bar-fill{opacity:.9}.stage-group .runtime-bar-fill.compile{background:#59a9db}.stage-group .runtime-bar-fill.instantiate{background:#af8fe0}.stage-group .runtime-bar-fill.first-call{background:repeating-linear-gradient(135deg,#65c7b4 0 5px,#328c7c 5px 9px)}.stage-group .runtime-bar-fill.execution{background:#65c7b4}.stage-group .runtime-bar-fill.other{background:#d5ad69}.stage-group .runtime-bar:hover,.stage-group .runtime-bar:focus-within{z-index:5}.bar-tooltip{display:none;position:absolute;top:calc(100% + 4px);left:0;max-width:min(350px,85vw);min-width:min(260px,85vw);padding:9px 11px;background:#11181c;border:1px solid #758890;box-shadow:0 8px 20px #0008;color:#eef4f7;font-size:11px;line-height:1.45;z-index:10;pointer-events:none}.runtime-bar:hover .bar-tooltip,.runtime-bar:focus-within .bar-tooltip{display:block}.bar-tooltip strong{display:block;margin-bottom:3px}.bar-tooltip span{display:block}.workload-card-head span{white-space:normal;text-align:right}.board-context{margin:3px 0 17px}
+.headline-chart{margin:12px 0 30px;padding:26px 30px 24px;background:linear-gradient(155deg,#202a30,#182025);border-color:#596970}.headline-chart h3{font-size:26px}.headline-chart-head{margin-bottom:18px}.headline-chart-note{font-size:12px;line-height:1.5;margin-bottom:18px}.headline-chart-grid{gap:0}.headline-chart-row{grid-template-columns:minmax(145px,205px) repeat(var(--chart-cols,4),minmax(155px,1fr));min-width:max(100%,calc(205px + 155px * var(--chart-cols,4)));gap:18px;padding:17px 2px}.headline-chart-row.headings{padding:5px 2px 13px}.headline-chart-runtime{font-size:16px}.headline-chart-value{font-size:16px}.headline-chart-track{height:19px;margin-top:8px;border-radius:3px}.headline-chart-fill{min-width:0;border-radius:3px}.headline-chart-cell{padding:2px 3px}.headline-chart-cell:not(.missing):hover,.headline-chart-cell:not(.missing):focus-visible{outline:2px solid #dceef5;outline-offset:5px}.chart-controls{margin:0 0 12px}.chart-controls .stage-picker{flex:3}.chart-controls .search-label{max-width:340px}.board{margin-top:12px}.board-main>.memory-toolbar{margin-top:0}
+@media(max-width:720px){.stage-legend{font-size:11px;gap:5px 10px}.bar-tooltip{left:auto;right:0}.workload-card-head span{font-size:10px}}
+@media(max-width:720px){.headline-chart{padding:16px;margin-bottom:22px}.headline-chart-row{grid-template-columns:repeat(2,minmax(0,1fr));min-width:0;gap:12px;padding:15px 2px}.headline-chart-runtime{grid-column:1/-1}.headline-chart-value{font-size:14px}.chart-controls{display:block}.chart-controls .search-label{margin-top:12px;max-width:none}}
+.headline-chart-row{grid-template-columns:minmax(140px,185px) minmax(280px,2fr) repeat(calc(var(--chart-cols,4) - 1),minmax(125px,1fr))}.headline-lifecycle-track{height:32px;margin-top:8px}.headline-chart-cell.lifecycle:hover{outline:none}.headline-lifecycle-track .bar-tooltip{white-space:normal}.headline-chart-row .composite-segment{min-width:0}.headline-chart-row:last-child .bar-tooltip{top:auto;bottom:calc(100% + 5px)}
+@media(max-width:720px){.headline-chart-row{grid-template-columns:repeat(2,minmax(0,1fr))}.headline-chart-cell.lifecycle{grid-column:1/-1}.headline-lifecycle-track{height:30px}.headline-chart-row .bar-tooltip{left:0;right:auto}}
+/* The lifecycle chart is the primary comparison, not a thumbnail. */
+.headline-chart{padding:24px;margin:18px 0 32px;background:#192125;border-color:#62717a}.headline-chart h3{font-size:27px;letter-spacing:-.025em}.headline-chart-row{padding:17px 0;gap:18px}.headline-chart-runtime{font-size:16px}.headline-chart-value{font-size:17px}.headline-lifecycle-track{height:44px;margin-top:9px}.headline-chart-track{height:16px;margin-top:9px}.headline-stage-label{display:block;padding:0 8px;color:#10212a;font-size:12px;font-weight:750;line-height:44px;white-space:nowrap;overflow:hidden;pointer-events:none}.headline-chart-note{max-width:1050px;font-size:12px;line-height:1.6}.headline-chart .stage-legend{margin-bottom:16px}
+.headline-stage-actions{display:flex;gap:4px 8px;flex-wrap:wrap;margin-top:7px}.headline-stage-value{font-size:11px;min-height:24px;padding:2px 5px;border:1px solid #526068;color:#dce9ef}.headline-stage-value:hover,.headline-stage-value:focus-visible{border-color:#e7f3ff;background:#2d3940}
+.headline-chart-cell.rss.compile .headline-chart-fill{background:#59a9db}.headline-chart-cell.rss.instantiate .headline-chart-fill{background:#af8fe0}.headline-chart-cell.rss.execution .headline-chart-fill{background:#65c7b4}.headline-chart-cell.rss.first-call .headline-chart-fill{background:repeating-linear-gradient(135deg,#65c7b4 0 5px,#328c7c 5px 9px)}
+@media(max-width:720px){.headline-chart{padding:16px}.headline-chart h3{font-size:23px}.headline-chart-row{padding:14px 0;gap:12px}.headline-chart-runtime{font-size:15px}.headline-chart-value{font-size:15px}.headline-lifecycle-track{height:38px}.headline-stage-label{line-height:38px;font-size:11px;padding:0 5px}}
+@media(max-width:720px){.headline-chart-cell.lifecycle{grid-column:1/-1}}
+.headline-chart-row{grid-template-columns:minmax(140px,185px) minmax(340px,3fr) repeat(calc(var(--chart-cols,4) - 1),minmax(125px,1fr));min-width:max(100%,calc(525px + 143px * (var(--chart-cols,4) - 1)))}
+.headline-scale{display:flex;justify-content:space-between;gap:10px;margin-top:7px;color:#91a4ae;font-size:10px;font-weight:400;letter-spacing:0;text-transform:none;font-variant-numeric:tabular-nums}
+.pareto-view{border:1px solid #48565e;padding:16px 20px;margin:0 0 26px}.pareto-view>summary{font-size:17px;font-weight:700}.pareto-view label{max-width:300px;margin:16px 0}.pareto-view p{font-size:12px;color:#b4c4cd}.pareto-view svg{height:auto;min-width:520px;display:block}.pareto-plot{overflow:auto}.pareto-view circle[role=button]{cursor:pointer}.pareto-view circle:focus-visible{outline:3px solid #fff}.pareto-view td:first-child{min-width:120px}.pareto-view td{font-size:12px}.pareto-view .pareto-detail{border-top:1px solid #46555d;margin-top:14px;padding-top:12px}.pareto-detail a{margin-right:15px}.pareto-detail ul{max-height:200px;overflow:auto}
+@media(max-width:720px){.headline-chart-row{grid-template-columns:repeat(2,minmax(0,1fr));min-width:0}}
+.chart-expand{border:1px solid #62717a;border-radius:4px;padding:7px 12px;color:#dce9ef;white-space:nowrap}.chart-expand:hover,.chart-expand:focus-visible{background:#2d3940;outline:2px solid #dceef5;outline-offset:2px}main.chart-expanded{max-width:none}.chart-expanded .headline-chart{padding:32px}.chart-expanded .headline-lifecycle-track{height:64px}.chart-expanded .headline-stage-label{line-height:64px;font-size:14px}.chart-expanded .headline-chart-row{padding:24px 0}.chart-expanded .headline-chart-track{height:22px}@media(max-width:720px){.chart-expanded .headline-chart{padding:16px}.chart-expanded .headline-lifecycle-track{height:48px}.chart-expanded .headline-stage-label{line-height:48px;font-size:11px}}
+.engine-timeline [role=button]:focus-visible{stroke:#fff;stroke-width:3}.engine-event-detail{white-space:pre-wrap;overflow-wrap:anywhere}
+#code-lifetime-view{border:1px solid #62717a;padding:18px;margin:24px 0}#code-lifetime-view select{width:100%;min-width:0}#code-lifetime-view p{overflow-wrap:anywhere}#code-lifetime-view table{min-width:650px}#code-lifetime-view .tablewrap{margin-top:14px}#code-lifetime-view td{font-size:12px}#code-lifetime-view svg{height:auto;min-width:500px}
+.headline-chart-cell.rss{position:relative}.headline-chart-cell.rss:hover,.headline-chart-cell.rss:focus-visible{z-index:6}.headline-chart-cell.rss .bar-tooltip{left:auto;right:0}.headline-chart-cell.rss:hover .bar-tooltip,.headline-chart-cell.rss:focus-visible .bar-tooltip{display:block}
+#snapshot-process-chart .runtime-bar-button>span:nth-last-child(2){flex:1;min-width:0;overflow-wrap:anywhere}#snapshot-process-chart .runtime-bar-button>span:last-child{flex-shrink:0;white-space:nowrap}
+#snapshot-process-view select{width:100%;min-width:0;max-width:100%}#snapshot-process-view label{min-width:0;max-width:100%;flex:1 1 150px}#snapshot-process-view p{overflow-wrap:anywhere}
+#snapshot-process-chart .snapshot-source .runtime-bar-fill{background:#59a9db}#snapshot-process-chart .snapshot-template .runtime-bar-fill{background:#af8fe0}#snapshot-process-chart .snapshot-restored .runtime-bar-fill{background:#65c7b4}
+.rust-process-boundaries table{min-width:720px}.rust-process-boundaries th:first-child,.rust-process-boundaries td:first-child{width:60px;min-width:60px}.rust-process-boundaries th:nth-child(2),.rust-process-boundaries td:nth-child(2){width:190px;min-width:190px}.rust-process-boundaries td{white-space:nowrap}.rust-process-boundaries td:nth-child(2){white-space:normal}
+</style></head><body><main class="chart-expanded">
+<header class="hero"><div class="topline"><div class="brand">wasmbench<span style="color:#74d6c3">.</span></div><div class="links"><a href="data.json" download>Dataset</a><a href="raw/manifest.json">Manifest</a><a href="checksums.json">Report seal</a><a href="raw/checksums.json">Run seal</a></div></div><div class="eyebrow">WebAssembly runtime benchmark</div><h1>Compare WebAssembly runtimes.</h1><p class="hero-copy">Scan workloads across engines. Open any result for its measurements and raw evidence.</p><p id="identity" class="muted"></p></header>
+<section id="code-lifetime-view" hidden><h2>Native executable-code lifetime</h2><p>Engine callback publication/unpublication and verified ownership checkpoints. Active and cumulative published executable-text capacity include wrappers, constants and padding. Publication is not compiler emission; unpublication is not physical reclamation. Clocks are diagnostic, not headline latency.</p><a href="code-lifetimes.parquet" download>Download typed lifetime Parquet</a><div id="code-lifetime-evidence"></div></section>
+<section id="overview-comparison" class="overview" aria-labelledby="overview-title"><div class="overview-heading"><div><div class="eyebrow">The results</div><h2 id="overview-title">Runtime comparison</h2><p class="muted">Compare recorded lifecycle stages for every workload. Lower latency is better.</p></div><span id="overview-count" class="overview-count"></span></div>
+<div class="board-toolbar chart-controls"><fieldset class="stage-picker"><legend>Stages to show</legend><div id="stage-options" class="stage-options"></div></fieldset><label class="search-label" for="overview-query">Find a workload<input id="overview-query" type="search" placeholder="Search workload names"></label></div>
+<section class="headline-chart" aria-labelledby="headline-chart-title"><div class="headline-chart-head"><h3 id="headline-chart-title">Compile latency, instantiate, execution &amp; peak RSS</h3><button id="chart-expand" class="chart-expand" type="button" aria-expanded="true" aria-controls="headline-chart-grid">Compact graph</button><label for="chart-workload">Workload<select id="chart-workload"></select></label></div><div id="headline-stage-legend" class="stage-legend" aria-label="Selected stage colors"></div><p id="headline-chart-note" class="headline-chart-note"></p><div id="headline-chart-grid" class="headline-chart-grid"></div><div id="headline-memory-detail" class="headline-memory-detail" hidden></div></section>
+<details class="pareto-view"><summary>Latency × peak RSS trade-offs</summary><p>Uses the workload above and selected runtime configurations. One stage at a time; lower-left is better. Outlined points are the median-based frontier among the selected configurations—not a significance test, an overall score, or an end-to-end measurement. RSS is the whole-process peak of a separate stage-focused memory launch. Intervals are independent per-axis 95% bootstrap intervals, not a joint confidence region.</p><label for="pareto-stage">Stage<select id="pareto-stage"></select></label><p id="pareto-coverage" role="status"></p><div id="pareto-plot" class="pareto-plot"></div><div id="pareto-table" class="tablewrap"></div><div id="pareto-detail" class="pareto-detail" hidden></div></details>
+<div class="board"><aside class="runtime-filter" aria-label="Runtime configuration filters"><h3>Runtime configurations</h3><div id="runtime-filter-list" class="filter-list"></div><p>Filter the chart without changing the recorded results.</p><p id="runtime-filter-status" role="status"></p></aside>
+<div class="board-main"><div class="memory-toolbar"><label for="memory-metric">Memory shown on hover<select id="memory-metric"></select></label><p id="memory-source" class="memory-source"></p></div><p id="overview-context" class="board-context"></p><div id="overview-groups"></div><p class="board-footer">Each timing segment represents a separately measured stage median. The displayed sum is illustrative, not measured end-to-end latency; first-call and steady execution are mutually exclusive. Memory comes from a separate profile and is never added to timing or to other memory stages. Hover or focus a segment for its time and selected memory metric; click for intervals, launch counts, and raw evidence. Incomplete timing results are not ranked. <a id="overview-evidence-link" href="#evidence-panel">Explore full evidence ↓</a></p><p class="board-note">Local exploratory data. Machine controls and publication qualification have not been established.</p></div></div></section>
+<section id="snapshot-density-view" class="headline-chart" style="min-width:0;max-width:100%" hidden><h2>Restored process density</h2><p>Source + template + all restored children. PSS and private-memory sums are non-atomic boundary accounting, not physical peaks or summed RSS. Groups reduce to one median per independent launch. Missing is not zero. Marginal costs pair adjacent counts within randomized launch blocks; negative differences are retained.</p><label style="min-width:0">Runtime, stage and memory metric<select id="snapshot-density-choice" style="width:100%;min-width:0;max-width:100%"></select></label><div id="snapshot-density-chart" class="tablewrap"></div><div id="snapshot-density-detail" style="overflow-wrap:anywhere" aria-live="polite"></div></section>
+<details id="evidence-panel" class="evidence-panel"><summary>Explore detailed evidence</summary><div class="evidence-inner">
+<div class="notice">Exploratory measurements. Machine controls and a publication pilot have not been established. Batch averages are not individual request latency. Missing or unsupported outcomes remain visible.</div>
+<div class="notice" id="latency-policy" role="status"></div>
+<div class="stats" id="stats"></div>
+<div class="controls"><label>Scenario<select id="scenario"></select></label><label>Runtime configuration<select id="runtime"><option value="">All configurations</option></select></label><label>Workload<input id="query" placeholder="Filter workloads…"></label></div>
+<p class="muted" id="boundary"></p><div class="tablewrap"><table><thead><tr><th>Workload / configuration</th><th>Headline median per operation</th><th>95% interval</th><th>Successful / attempted launches</th><th>Evidence quality</th></tr></thead><tbody id="rows"></tbody></table></div>
+<section id="detail" aria-live="polite"></section>
+<section id="harness-view" hidden><h2>Empty local harness calibration</h2><p>Language-local loop bookkeeping, not Wasm execution or embedding API latency. Every iteration writes to a preallocated slot; workload qualification, clearing and verification are untimed. Timer resolution, compiler/JIT behavior and bookkeeping remain included. No subtraction, throughput, runtime ranking or request percentiles are inferred. Each selector entry is a separate process; samples within it are not independent launches.</p><label>Calibration trial<select id="harness-trial"></select></label><label>Sample window<select id="harness-window"></select></label><div id="harness-evidence"></div></section>
+<section id="break-even" hidden><h2>Setup versus invocation count</h2><p id="break-even-policy" class="muted"></p><label>Workload<select id="break-even-choice"></select></label><label>Runtime configuration<select id="break-even-runtime"><option value="">All configurations</option></select></label><div id="break-even-chart"></div><div id="break-even-detail" class="pareto-detail" aria-live="polite" hidden></div><div id="break-even-curves"></div></section>
+<section id="admission"><h2>Artifact admission</h2><p class="muted">Independent validation is not runtime compatibility. Necessary flags are conditional on the locked validator policy, not a unique minimal proposal set.</p><p id="analyzer-identity"></p><div class="tablewrap"><table><thead><tr><th>Workload / exact artifact</th><th>Admission</th><th>Conditional feature requirements</th><th>Evidence</th></tr></thead><tbody id="admission-rows"></tbody></table></div></section>
+<section id="scaling" hidden><h2>Scaling and instance density</h2><p class="muted">Timing and memory are separate curves, never combined into one score. Points are medians of independent-launch medians. Intervals need at least three launches. Fits describe these sizes only—not asymptotic complexity. Missing points are not connected. Heap snapshots are not retained-live-memory measurements.</p><div class="scaling-filters"><label>Measurement pass<select id="scaling-profile"></select></label><label>Runtime configuration<select id="scaling-runtime"></select></label><label>Metric<select id="scaling-metric"></select></label></div><p id="scaling-coverage" role="status"></p><label>Policy and collection boundary<select id="scaling-choice"></select></label><div id="scaling-chart"></div><div id="scaling-marginal"></div><div id="scaling-evidence"></div></section>
+<p id="memory-exports" hidden>Full separate memory pass: <a href="memory-samples.parquet" download>Sample Parquet</a> · <a href="memory-observations.parquet" download>Observation Parquet</a>. These retain all raw memory-run outcomes, including any cells not joined to timing.</p>
+<section id="snapshot-process-view" hidden><h2>Snapshot process footprints</h2><p class="muted">Source, template and restored-child readings stay separate. RSS/PSS/private residency and virtual address space are non-atomic boundary snapshots—not stage peaks, allocation volume, snapshot size or physical COW attribution. Processes are held live while read; shared pages can appear in multiple RSS readings, so they are never added together. Diagnostic timers are excluded from headline latency.</p><div class="controls"><label>Trial and evidence source<select id="snapshot-process-trial"></select></label><label>Sample<select id="snapshot-process-sample"></select></label><label>Process role<select id="snapshot-process-role"><option value="">All roles</option><option value="source">Source</option><option value="template">Template</option><option value="restored">Restored child</option></select></label><label>Footprint<select id="snapshot-process-metric"><option value="rss_bytes">RSS</option><option value="pss_bytes">PSS</option><option value="private_bytes">Private resident</option><option value="virtual_bytes">Virtual address space</option></select></label></div><div id="snapshot-process-chart"></div><div id="snapshot-process-detail" hidden aria-live="polite"></div></section>
+<section id="memory-timeline" hidden><h2>Memory snapshots across samples</h2><p class="muted">Primary and paired memory runs remain distinct. One independent process and exact measurement domain at a time. Sample indices are ordinal—not elapsed time. Gaps remain gaps; endpoint footprint changes are not allocation volume or proof of a leak. Warmup remains visible.</p><label>Snapshot trial and evidence source<select id="memory-trial"></select></label><label>Snapshot measurement<select id="memory-measurement"></select></label><label>Sample window<select id="memory-window"></select></label><div id="memory-chart"></div></section>
+<section id="sustained-view" hidden><h2>Sustained execution and logical release</h2><p>One retained instance and independent process at a time. X is monotonic elapsed session time; gaps include verification and diagnostics. The locked duration target counts measured non-warmup API time, not wall time or sustained service throughput. Memory-pass timers are diagnostic only. Allocator rate uses the observed diagnostic bracket, not heap endpoint differences. Go heap and V8 heap are separate domains, neither is process RSS. Release policy distinguishes runtime close from JS reference dropping; neither proves reclamation or a leak. Optional forced Go collection is separately labeled below and never occurs in a timing pass.</p><label>Session<select id="sustained-session"></select></label><label>Measurement<select id="sustained-metric"><option value="api_ns_per_operation">Batch API latency · ns / operation</option><option value="go_allocated_bytes_per_diagnostic_second">Go allocation activity · bytes / diagnostic second</option><option value="go_heap_end_bytes">Go heap at batch end · bytes</option><option value="v8_heap_end_bytes">V8 heap at batch end · bytes</option><option value="go_gc_cycles">Go GC cycles during batch · count</option></select></label><label>Sample window<select id="sustained-window"></select></label><div id="sustained-chart"></div></section>
+<section id="phase-cpu" hidden><h2>Phase CPU work</h2><p class="muted">Diagnostic cgroup CPU time for the adapter process tree during a memory-pass barrier window. It includes barrier transport and background work, not just the compile or call API. CPU time can exceed wall time when threads run in parallel; it is not added to the timing-pass latency. Linux cgroup accounting has microsecond resolution. Independently computed total, user, and system medians need not add up. Unavailable is not zero.</p><p id="phase-cpu-unavailable" class="muted" hidden></p><label id="phase-cpu-control">Scenario<select id="phase-cpu-scenario"></select></label><div id="phase-cpu-table" class="tablewrap"><table><thead><tr><th>Workload / configuration</th><th>Total CPU</th><th>User / system</th><th>95% interval (total)</th><th>Eligible / attempted launches</th><th>Raw evidence</th></tr></thead><tbody id="phase-cpu-rows"></tbody></table></div></section>
+<section id="counter-evidence" hidden><h2>Counter evidence</h2><p>Raw diagnostic counts by trial, sample and CPU. Values are exact decimal strings, never scaled for multiplexing or summed across partial CPU coverage. Failed or invalidated readings are diagnostic only. No guest-only attribution or performance ranking is inferred.</p><p><a href="counters.parquet" download>Download typed counter Parquet</a></p><label>Counter trial<select id="counter-trial"></select></label><label>Evidence window<select id="counter-window"></select></label><div id="counter-table"></div></section>
+<section id="cpu-profiles" hidden><h2>CPU profiles</h2><p>Collector-scoped sampled diagnostics (Go process or V8 isolate) over the entire run request, including setup, warmup and verification. Not guest-only attribution or an exact CPU counter. Collection can produce no samples on short workloads. Failed trials remain diagnostic only.</p><p>Download the raw profile and inspect it with <code>go tool pprof -top profile.pprof</code> or <code>go tool pprof -http=127.0.0.1:8080 profile.pprof</code>. Keep the locked adapter binary for symbolization. V8 downloads use native <code>.cpuprofile</code> JSON for compatible DevTools viewers; they are isolate samples, not all-process CPU totals.</p><div id="cpu-profile-list"></div></section>
+<section id="cpu-stack-view" hidden><h2>Sampled CPU flamegraph</h2><p>Width represents the selected collector's weight: Go process CPU nanoseconds or V8 isolate sample counts. These units are not interchangeable. This is not wall-clock duration, call order, or guest-only attribution. Go labels are aggregated; V8 includes recorded idle/program/GC frames. Embedded symbols may be unresolved. Failed trials are diagnostic only. Values are exact decimals; geometry is rounded.</p><label>Profile<select id="cpu-stack-trial"></select></label><p id="cpu-stack-context"></p><button id="cpu-stack-reset" type="button">Reset zoom</button><div id="cpu-stack-chart"></div><p id="cpu-stack-limit"></p><label>Exact frame table<select id="cpu-stack-page"></select></label><div id="cpu-stack-table"></div></section>
+<section id="tier-view" hidden><h2>Exported-entry code tier boundaries</h2><p>V8 engine-reported, non-atomic code-state snapshots before and after each individual call on one retained instance. Warmup and first invocation are retained. Snapshot brackets are not exact transition times or proof of the tier executed throughout a call, internal callee tiers, background compiler activity, or fully materialized code. Instrumented call times are diagnostic only.</p><div id="tier-evidence"></div></section>
+<section id="engine-trace-view" hidden><h2>Native Wasm engine events</h2><p>Process-wide V8 category instrumentation, including setup, warmup, verification and trace flush. Native thread IDs and microsecond timestamps are retained. Events are not attributed to this workload's module or functions. Nested and overlapping durations are not summed; delivery completion does not prove all compiler jobs are idle or all code is materialized. Failed and incomplete traces remain diagnostic only.</p><p><a href="engine-events.parquet" download>Download typed engine-event Parquet</a> · Includes profiling trial outcomes and nullable native fields; experiment module identity is not event attribution.</p><div id="engine-trace-evidence"></div></section>
+<h2>Experiment configuration</h2><details><summary>Runtime builds and effective settings</summary><pre id="configs"></pre></details><details><summary>Host and resource policy</summary><pre id="host"></pre></details><details><summary>Metric definitions and missing-data policies</summary><pre id="metrics"></pre></details>
+<h2>Reproduce</h2><p>Download and keep the complete report directory, including every copied raw bundle and <a href="builder.json">report-builder receipt</a>. Restore the exact adapter builds at their locked paths on a compatible host, then run the commands below from the report directory. Each attached pass runs separately and sequentially. The exact recorded runner is used from the current executable or its sealed tool archive; unavailable or changed tools fail preflight without starting measurements. Default verification only reads files and uses the current analysis/renderer.</p><p>For an older report, <code>--recorded-builder</code> explicitly executes its archived builder to retain the original analysis/renderer. Use this only for reports you trust to execute: checksums prove consistency, not publisher trust. The archive stays non-executable; a temporary hash-checked copy runs on its recorded OS/architecture. Reports created before builder archival require separately recovering their original builder. Reproduction is not a claim of identical performance or official publication.</p><pre id="reproduce"></pre></div></details>
+<footer id="footer"></footer></main>
+<script id="dataset" type="application/json">{{.Data}}</script>
+<script>
+'use strict';
+const data=JSON.parse(document.getElementById('dataset').textContent),bundle=data.bundle,manifest=bundle.manifest;
+const el=id=>document.getElementById(id),node=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
+const fmt=n=>n>=1e9?(n/1e9).toFixed(2)+' s':n>=1e6?(n/1e6).toFixed(2)+' ms':n>=1e3?(n/1e3).toFixed(2)+' µs':n.toFixed(1)+' ns';
+el('identity').textContent=manifest.id+' · '+manifest.host.os+'/'+manifest.host.arch+' · '+manifest.host.cpu_description.split('\n')[0]+' · '+manifest.lock.options.profile+' pass';
+el('latency-policy').textContent=data.headline_latency_policy.reason+' Raw diagnostic timers and warmup remain in trial JSON and samples.parquet.';
+for(const [value,label] of [[manifest.lock.workloads.length,'workloads'],[manifest.lock.runtime_configurations.length,'runtime configurations'],[bundle.trials.filter(t=>t.block>=0&&t.status==='ok').length,'successful trials'],[bundle.trials.filter(t=>t.block>=0&&t.status!=='ok').length,'failed / unsupported trials']]){const n=node('div');n.append(node('strong',value),node('span',label));el('stats').append(n);}
+for(const s of manifest.lock.options.scenarios){const n=node('option',s);n.value=s;el('scenario').append(n);}
+for(const r of manifest.lock.runtime_configurations){const n=node('option',r.id);n.value=r.id;el('runtime').append(n);}
+el('configs').textContent=JSON.stringify(manifest.lock.runtime_configurations,null,2);el('host').textContent=JSON.stringify(manifest.host,null,2);el('metrics').textContent=JSON.stringify(data.metrics,null,2);
+el('reproduce').textContent='wasmbench reproduce-report --dir . --out ../reproduced-report\nwasmbench verify-report --dir ../reproduced-report/report\nwasmbench serve --dir ../reproduced-report/report\n\n# Only for a trusted report: execute its original analysis/renderer\nwasmbench verify-report --dir . --recorded-builder\nwasmbench reproduce-report --dir . --out ../reproduced-original --recorded-builder\nwasmbench verify-report --dir ../reproduced-original/report --recorded-builder';el('footer').textContent='Analysis: '+data.analysis_version+' · Runner: '+manifest.lock.runner_version+' · Intervals resample independent process medians.';
+renderHarnessEvidence(bundle.trials);
+function renderPublicationNotice(publication){
+  if(publication?.version!=='qualified-publication-archive-v1'||publication.audit?.status!=='eligible')return;
+  const board=document.querySelector('.board-note'),notice=document.querySelector('.evidence-inner>.notice');
+  const explanation='Publication audit passed under the recorded operator trust decision. Authenticate independently with your trusted operator key; a signature authenticates assertions, not physical host truth.';
+  if(board){board.replaceChildren(node('span',explanation+' '));for(const [href,label] of [['publication-audit.json','Audit'],['qualification.json','Operator statement'],['raw-pilot/manifest.json','Pilot evidence']]){const a=node('a',label);a.href=href;board.append(a,node('span',' · '));}}
+  if(notice)notice.textContent=explanation+' Batch averages are not individual request latency.';
+  el('reproduce').textContent+='\n\n# Authenticate with a separately obtained trusted operator public key\nwasmbench verify-report --dir . --qualification-key /trusted/operator-public.json\n# Reproduced measurements need a new qualification for their new seal and windows.';
+}
+renderPublicationNotice(data.publication);
+function headlineEstimate(s){return s.latency_status==='timing_pass'&&s.independent_launches>0&&Number.isFinite(s.median_ns_per_operation)&&s.median_ns_per_operation>=0;}
+function draw(){
+  el('detail').style.display='none';el('detail').replaceChildren();
+  const scenario=el('scenario').value,rt=el('runtime').value,q=el('query').value.toLowerCase();
+  const rows=data.summaries.filter(s=>s.scenario===scenario&&(!rt||s.runtime===rt)&&s.workload.toLowerCase().includes(q));
+  const max=rows.reduce((n,s)=>headlineEstimate(s)?Math.max(n,s.median_ns_per_operation):n,1);
+  el('boundary').textContent=data.scenarios.find(s=>s.id===scenario)?.boundary||scenario;el('rows').replaceChildren();
+  for(const s of rows){
+    const tr=node('tr'),name=node('td'),button=node('button',s.workload+' / '+s.runtime);button.onclick=()=>detail(s);name.append(button);tr.append(name);
+    const eligible=s.latency_status==='timing_pass',available=headlineEstimate(s);
+    const latency=node('td',available?fmt(s.median_ns_per_operation):eligible?'Unavailable':'Withheld');latency.title=s.latency_reason;
+    if(available){const bar=node('div');bar.className='bar';bar.style.width=(s.median_ns_per_operation/max*100)+'%';latency.append(bar);}
+    const interval=available&&Number.isFinite(s.ci95_low)&&Number.isFinite(s.ci95_high)?fmt(s.ci95_low)+' – '+fmt(s.ci95_high):eligible?'Insufficient launches':'Not applicable';
+    const quality=eligible?(available?s.stability+' · '+s.independent_launches+' latency launches':Object.keys(s.outcomes).join(', ')):s.latency_status.replaceAll('_',' ');
+    tr.append(latency,node('td',interval),node('td',s.successful_launches+' / '+s.attempted_launches),node('td',quality));el('rows').append(tr);
+  }
+}
+function harnessSampleValue(trial,sample){
+  const count=sample.operations,elapsed=sample.elapsed_ns;
+  const kind=count===1?'individual_operation':'batch_average';
+  if(trial.block<0||trial.status!=='ok'||trial.profile!=='timing'||sample.verified!==true||sample.warmup||!Number.isSafeInteger(count)||count<1||count>1000000||!Number.isSafeInteger(elapsed)||elapsed<0||sample.sample_type!==kind||sample.result?.length!==1||sample.result[0]!==String(count)||(sample.observations||[]).length)return null;
+  return elapsed/count;
+}
+function renderHarnessEvidence(trials){
+  const section=el('harness-view'),trialSelect=el('harness-trial'),windowSelect=el('harness-window'),root=el('harness-evidence');
+  const recorded=trials.filter(t=>t.scenario==='harness-calibration');
+  const calibrationOnly=manifest.lock.options?.scenarios?.length>0&&manifest.lock.options.scenarios.every(s=>s==='harness-calibration');
+  if(el('overview-comparison'))el('overview-comparison').hidden=calibrationOnly;
+  if(calibrationOnly&&el('evidence-panel'))el('evidence-panel').open=true;
+  section.hidden=!recorded.length;trialSelect.replaceChildren();windowSelect.replaceChildren();root.replaceChildren();if(!recorded.length)return;
+  recorded.forEach((t,i)=>{const option=node('option',t.runtime_configuration+' / '+t.workload+' / '+t.id+' · '+(t.block<0?'sacrificial correctness':t.status));option.value=i;trialSelect.append(option);});
+  const draw=()=>{
+    root.replaceChildren();const t=recorded[Number(trialSelect.value)],samples=t.samples||[],first=Number(windowSelect.value);
+    root.append(node('p','Trial outcome: '+t.status+(t.reason?' · '+t.reason:'')+' · '+(t.block<0?'Sacrificial workload correctness: these are not calibration iterations.':'Independent process block '+t.block+' · '+samples.length+' recorded samples. Failed/unverified prefixes are diagnostic only.')));
+    const raw=node('a','Raw trial evidence');raw.href='raw/trials/'+encodeURIComponent(t.id)+'.json';const reproduce=node('a','Reproduction instructions');reproduce.href='#reproduce';const links=node('p');links.className='links';links.append(raw,reproduce);root.append(links);
+    const config=manifest.lock.runtime_configurations.find(c=>c.id===t.runtime_configuration),settings=node('details');settings.append(node('summary','Exact runtime configuration and calibration policy'),node('pre',JSON.stringify(config??{status:'unavailable'},null,2)));root.append(settings);
+    if(!samples.length){root.append(node('p','No samples recorded. Missing is not zero.'));return;}
+    const table=node('table'),head=node('tr'),wrap=node('div');wrap.className='tablewrap';['Sample / type','Elapsed timer (ns)','Iterations','Diagnostic ns / iteration','Verification / returned result'].forEach(text=>head.append(node('th',text)));table.append(head);
+    for(const s of samples.slice(first,first+250)){
+      const value=harnessSampleValue(t,s),row=node('tr');
+      row.append(node('td',String(s.index)+' / '+(s.sample_type||'Not recorded')+(s.warmup?' · warmup':'')),node('td',s.elapsed_ns===undefined?'Not recorded':String(s.elapsed_ns)),node('td',s.operations===undefined?'Not recorded':String(s.operations)),node('td',value===null?'Not applicable / invalid diagnostic':value.toFixed(3)),node('td',(s.verified===true?'Verified':'Not verified')+' · '+JSON.stringify(s.result??null)));table.append(row);
+    }wrap.append(table);root.append(wrap);
+  };
+  const reset=()=>{windowSelect.replaceChildren();const t=recorded[Number(trialSelect.value)],count=(t.samples||[]).length;for(let i=0;i<count;i+=250){const option=node('option','Positions '+(i+1)+'–'+Math.min(i+250,count)+' of '+count);option.value=i;windowSelect.append(option);}windowSelect.value=0;draw();};
+  trialSelect.addEventListener('change',reset);windowSelect.addEventListener('change',draw);reset();
+}
+function tierTrajectory(root,trials){
+  const eligible=trials.filter(t=>t.block>=0&&t.profile==='profiling'&&t.scenario==='trajectory'&&(t.samples||[]).some(s=>s.tier_window));
+  root.replaceChildren();if(!eligible.length){root.append(node('p','No exported-entry tier observations recorded.'));return;}
+  const launch=node('select'),window=node('select'),launchLabel=node('label','Independent trial'),windowLabel=node('label','Invocation window'),body=node('div');launch.id='tier-trial';window.id='tier-window';launchLabel.append(launch);windowLabel.append(window);root.append(launchLabel,windowLabel,body);
+  for(let i=0;i<eligible.length;i++){const t=eligible[i],o=node('option',t.runtime_configuration+' / '+t.workload+' / '+t.id+' · '+t.status);o.value=i;launch.append(o);}
+  const reading=r=>r?r.state+' ['+r.start_ns+', '+r.end_ns+'] ns'+(r.reason?' · '+r.reason:''):'Not recorded';
+  const invocationStatus=s=>(s.verified===true?'Verified':'Not verified')+' · '+(s.tier_window?.invocation_outcome||'invocation outcome not recorded (legacy)')+(s.tier_window?.failure_reason?' · '+s.tier_window.failure_reason:'');
+  const draw=()=>{body.replaceChildren();const t=eligible[Number(launch.value)],first=Number(window.value),samples=t.samples||[],raw=node('a','Raw trial evidence');raw.href='raw/trials/'+encodeURIComponent(t.id)+'.json';body.append(node('p','Outcome: '+t.status+(t.reason?' · '+t.reason:'')+' · Clock origin: after instance/export setup; ns since that trial-local monotonic epoch.'),raw);
+    const visible=samples.slice(first,first+500),svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 1000 180');svg.setAttribute('role','img');svg.setAttribute('aria-label','Before and after code-state snapshots by invocation; exact brackets and reasons in the table below');
+    const colors={uncompiled:'#edb85f',liftoff:'#59a9db',optimizing:'#65c7b4',unavailable:'#88949b'};
+    const svgNode=(tag,attributes,text)=>{const n=document.createElementNS(svg.namespaceURI,tag);for(const [k,v] of Object.entries(attributes))n.setAttribute(k,v);if(text!==undefined)n.textContent=text;return n;};
+    svg.append(svgNode('text',{x:12,y:57,fill:'#dfe7f4'},'Before'),svgNode('text',{x:12,y:107,fill:'#dfe7f4'},'After'),svgNode('text',{x:110,y:150,fill:'#a5b2c7'},'Invocation '+(first+1)+' → '+(first+visible.length)+' · independent snapshots, not transition events'));
+    visible.forEach((s,i)=>{for(const [side,y] of [['before',50],['after',100]]){const r=s.tier_window?.[side];if(!r)continue;const dot=svgNode('circle',{cx:110+860*i/Math.max(1,visible.length-1),cy:y,r:visible.length>100?2:4,fill:colors[r.state]||colors.unavailable,stroke:s.verified===false?'#ed7878':'none','stroke-width':2});dot.append(svgNode('title',{},'Invocation '+s.tier_window.invocation+' · '+side+' · '+reading(r)+(s.warmup?' · warmup':'')+' · '+invocationStatus(s)));svg.append(dot);}});body.append(node('p','Yellow: uncompiled · blue: Liftoff · green: optimizing · gray: unavailable. Red outline: unverified call. No lines infer intermediate states. Failed trials and prefixes are diagnostic only.'),svg);
+    const table=node('table'),head=node('tr'),wrap=node('div');wrap.className='tablewrap';['Invocation / sample','Warmup','Verification / invocation outcome','Code before / snapshot bracket','Call bracket / diagnostic latency','Code after / snapshot bracket','Collector / scope / quality'].forEach(v=>head.append(node('th',v)));table.append(head);
+    for(const s of samples.slice(first,first+500)){const x=s.tier_window,row=node('tr');row.append(node('td',x?x.invocation+' / '+s.index:'Not recorded / '+s.index),node('td',s.warmup?'Yes':'No'),node('td',invocationStatus(s)+' · Returned bits: '+(x?.invocation_outcome==='guest_trap'?'None':s.result===undefined?'Not recorded':s.result.length?s.result.join(', '):'None')),node('td',reading(x?.before)),node('td',x?'['+x.operation_start_ns+', '+x.operation_end_ns+'] ns · '+fmt(s.elapsed_ns):'Not recorded'),node('td',reading(x?.after)),node('td',x?x.collector+' / '+x.collector_version+' · '+x.scope+' · '+x.quality:'Not recorded'));table.append(row);}wrap.append(table);body.append(wrap);
+  };
+  const reset=()=>{window.replaceChildren();const samples=eligible[Number(launch.value)].samples||[];for(let i=0;i<samples.length;i+=500){const o=node('option','Invocations '+(i+1)+'–'+Math.min(i+500,samples.length)+' of '+samples.length);o.value=i;window.append(o);}window.value=0;draw();};
+  launch.addEventListener('change',reset);window.addEventListener('change',draw);reset();
+}
+function engineTimelineModel(trial,events,callFirst=0,eventFirst=0){
+  const trace=trial.engine_trace,samples=(trial.samples||[]).filter(s=>s.tier_window);
+  if(!trace||trace.status==='unavailable')return {status:'unavailable',reason:trace?.reason||'No native trace'};
+  if(samples.length&&!trace.trajectory_epoch_ns)return {status:'unavailable',reason:'No trajectory clock bridge; native events cannot be aligned with calls'};
+  const origin=BigInt(trace.trajectory_epoch_ns||trace.start_clock_ns),originLabel=trace.trajectory_epoch_ns?'trajectory epoch':'collection start',marks=[],lanes=[];
+  const addLane=label=>{lanes.push(label);return lanes.length-1;};
+  const visibleCalls=samples.slice(callFirst,callFirst+500),colors={uncompiled:'#edb85f',liftoff:'#59a9db',optimizing:'#65c7b4',unavailable:'#88949b'};
+  if(visibleCalls.some(s=>{const w=s.tier_window;return [w.operation_start_ns,w.operation_end_ns,w.before.start_ns,w.before.end_ns,w.after.start_ns,w.after.end_ns,s.elapsed_ns].some(v=>!Number.isSafeInteger(v)||v<0);}))return {status:'unavailable',reason:'Selected call clocks are not exact safe integers in this viewer; inspect raw evidence'};
+  if(visibleCalls.length){
+    const callLane=addLane('Requested calls'),beforeLane=addLane('Code before'),afterLane=addLane('Code after');
+    for(const s of visibleCalls){
+      const w=s.tier_window,invocation='Invocation '+w.invocation+' · sample '+s.index+(s.warmup?' · warmup':'');
+      marks.push({kind:'call',lane:callLane,start:BigInt(w.operation_start_ns),end:BigInt(w.operation_end_ns),interval:true,color:s.warmup?'#edb85f':'#65c7b4',failed:s.verified===false,
+        title:invocation+' · '+s.elapsed_ns+' ns · '+(w.invocation_outcome||'returned'),detail:invocation+'\nOutcome: '+(w.invocation_outcome||'returned')+' · verified: '+s.verified+(w.failure_reason?' · '+w.failure_reason:'')+'\nCall bracket: ['+w.operation_start_ns+', '+w.operation_end_ns+'] ns relative to trajectory epoch\nDiagnostic latency: '+s.elapsed_ns+' ns\nReturned bits: '+(w.invocation_outcome==='guest_trap'?'None':(s.result||[]).join(', '))});
+      for(const [side,lane] of [['before',beforeLane],['after',afterLane]]){const r=w[side];marks.push({kind:side,lane,start:BigInt(r.start_ns),end:BigInt(r.end_ns),interval:true,color:colors[r.state]||colors.unavailable,failed:s.verified===false,
+        title:invocation+' · '+side+' · '+r.state+(r.reason?' · '+r.reason:''),detail:invocation+'\n'+side+' code-state snapshot: '+r.state+(r.reason?' · '+r.reason:'')+'\nNon-atomic inspection bracket: ['+r.start_ns+', '+r.end_ns+'] ns relative to trajectory epoch\nThis is not the tier executed throughout the call.'});}
+    }
+  }
+  const names=new Map();
+  for(const e of events){if(e.cat==='__metadata'&&e.name==='thread_name'&&e.ph==='M'&&typeof e.args?.name==='string'){const key=e.pid+'/'+e.tid;if(!names.has(key))names.set(key,new Set());names.get(key).add(e.args.name);}}
+  const native=[];
+  events.slice(eventFirst,eventFirst+500).forEach((e,i)=>{
+    if(e.cat==='__metadata')return;
+    const start=BigInt(String(e.ts))*1000n-origin,interval=e.ph==='X'&&e.dur!==undefined,end=interval?start+BigInt(String(e.dur))*1000n:start,key=e.pid+'/'+e.tid;
+    const seen=names.get(key),name=seen?.size===1?[...seen][0]:seen?.size>1?'conflicting thread metadata':'thread role unreported';
+    native.push({kind:'native',key,threadLabel:'PID/TID '+key+' · '+name,eventIndex:eventFirst+i,start,end,interval,color:'#af8fe0',
+      title:e.name+' · PID/TID '+key+' · phase '+e.ph+(interval?' · '+e.dur+' µs':' · boundary/point only'),detail:'Native event '+(eventFirst+i)+' · '+e.name+'\nPID/TID: '+key+' · '+name+'\nRelative bracket: ['+start+', '+end+'] ns from '+originLabel+'\nNative timestamps/durations have microsecond resolution. Only phase X is drawn as a duration interval; other phases are unpaired point markers.\nNo workload module/function attribution.\n'+JSON.stringify(e,null,2)});
+  });
+  // Visual tracks prevent overlapping intervals from hiding one another. Track
+  // placement is not a native nesting relation or evidence of worker ownership.
+  const tracks=new Map();
+  for(const mark of [...native].sort((a,b)=>a.start<b.start?-1:a.start>b.start?1:a.eventIndex-b.eventIndex)){
+    if(!tracks.has(mark.key))tracks.set(mark.key,[]);const slots=tracks.get(mark.key);let track=slots.findIndex(s=>s.end<mark.start);
+    if(track<0){track=slots.length;slots.push({lane:addLane(mark.threadLabel+' · track '+(track+1)),end:mark.end});}else slots[track].end=mark.end;
+    mark.lane=slots[track].lane;
+  }
+  marks.push(...native);
+  let min=0n,max=1n;if(marks.length){min=marks[0].start;max=marks[0].end;for(const m of marks){if(m.start<min)min=m.start;if(m.end>max)max=m.end;}if(max===min)max=min+1n;}
+  return {status:trace.status,origin:origin.toString(),originLabel,marks,lanes,min,max,totalCalls:samples.length,visibleCalls:visibleCalls.length,totalEvents:events.length,visibleEvents:Math.min(500,Math.max(0,events.length-eventFirst)),metadataOmitted:events.slice(eventFirst,eventFirst+500).filter(e=>e.cat==='__metadata').length};
+}
+function engineTimeline(root,trial,events,callFirst=0,eventFirst=0){
+  root.replaceChildren();const model=engineTimelineModel(trial,events,callFirst,eventFirst);
+  if(model.status==='unavailable'){root.append(node('p','Timeline unavailable · '+model.reason));return;}
+  root.append(node('h3','Calls, code snapshots and native thread events'),node('p','One shared elapsed-time axis from '+model.originLabel+' '+model.origin+' ns. Showing '+model.visibleCalls+' of '+model.totalCalls+' calls and '+model.visibleEvents+' of '+model.totalEvents+' delivered events; '+model.metadataOmitted+' metadata records remain table-only. Axis fits the selected windows; coordinates are display approximations, exact brackets are in click details.'));
+  root.append(node('p','Green: calls · amber: warmup/uncompiled · blue: Liftoff · gray: unavailable code state · purple: native process events · red outline: failed call. Overlap tracks do not imply nesting. Snapshot brackets are non-atomic; no connecting line infers transitions. Subpixel intervals use a minimum-width marker, not an inflated duration.'));
+  if(!model.marks.length){root.append(node('p','No plottable calls or native events in these windows.'));return;}
+  const wrap=node('div'),detail=node('pre'),svg=document.createElementNS('http://www.w3.org/2000/svg','svg');wrap.className='tablewrap';detail.className='engine-event-detail';
+  const height=80+model.lanes.length*38;svg.setAttribute('viewBox','0 0 1200 '+height);svg.style.minWidth='1000px';svg.style.width='100%';svg.style.height='auto';wrap.style.maxHeight='650px';svg.setAttribute('role','group');svg.setAttribute('aria-label','Shared elapsed-time timeline of diagnostic calls, non-atomic code snapshots and native process thread events');
+  const make=(tag,attrs,text)=>{const n=document.createElementNS(svg.namespaceURI,tag);for(const [k,v]of Object.entries(attrs))n.setAttribute(k,v);if(text!==undefined)n.textContent=text;return n;};
+  const x=value=>280+900*Number(value-model.min)/Number(model.max-model.min);
+  for(let i=0;i<=4;i++){const tick=model.min+(model.max-model.min)*BigInt(i)/4n,pos=x(tick);svg.append(make('line',{x1:pos,x2:pos,y1:30,y2:height-35,stroke:'#425158'}),make('text',{x:pos,y:height-12,fill:'#c8d3da','font-size':11,'text-anchor':i===0?'start':i===4?'end':'middle'},tick.toString()+' ns'));}
+  model.lanes.forEach((label,i)=>{const y=48+i*38,parts=label.split(' · '),lines=parts.length===3?[parts[0]+' · '+parts[2],parts[1]]:[label];lines.forEach((line,j)=>{const text=make('text',{x:8,y:y+(lines.length===1?4:-3+j*14),fill:'#dce8ee','font-size':11},line.length>43?line.slice(0,40)+'…':line);text.append(make('title',{},label));svg.append(text);});svg.append(make('line',{x1:280,x2:1180,y1:y,y2:y,stroke:'#2f3c42'}));});
+  for(const m of model.marks){const y=48+m.lane*38,attrs={fill:m.color,stroke:m.failed?'#ed7878':'#172025','stroke-width':m.failed?2:1,tabindex:0,role:'button','aria-label':m.title};
+    const marker=m.interval?make('rect',{...attrs,x:x(m.start),y:y-8,width:Math.max(1,x(m.end)-x(m.start)),height:16}):make('circle',{...attrs,cx:x(m.start),cy:y,r:3});
+    marker.append(make('title',{},m.title));const show=()=>{detail.textContent=m.detail+'\nTrial: '+trial.id+' · outcome: '+trial.status+' · diagnostic only';detail.scrollIntoView?.({block:'nearest'});};marker.addEventListener('click',show);marker.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();show();}});svg.append(marker);
+  }
+  detail.textContent='Hover or focus a marker for a summary; click or press Enter for exact source details.';wrap.append(svg);root.append(wrap,detail);
+}
+function codeLifetimeEvidence(root,trials){
+  const eligible=trials.filter(t=>t.scenario==='code-lifetime'&&t.block>=0),select=node('select'),body=node('div');root.replaceChildren();
+  select.setAttribute('aria-label','Code lifetime trial');eligible.forEach((t,i)=>{const option=node('option',t.runtime_configuration+' / '+t.workload+' / '+t.id+' / '+t.status);option.value=i;select.append(option);});root.append(select,body);
+  const draw=()=>{
+    const t=eligible[Number(select.value)||0];body.replaceChildren();if(!t){body.append(node('p','No measured lifecycle trials.'));return;}
+    const raw=node('a','Raw trial and native image');raw.href='raw/trials/'+encodeURIComponent(t.id)+'.json';body.append(node('p',t.status+(t.reason?' · '+t.reason:'')),raw);
+    const l=t.code_lifetime;if(!l){body.append(node('p','No code lifetime evidence recorded. Missing is not zero.'));return;}
+    body.append(node('p',l.collector+' / '+l.collector_version+' · '+l.scope+' · '+l.quality),node('p','Native image '+l.image_sha256+' · publication '+l.publication+' · image offset '+l.image_offset+' bytes · page size '+l.page_size+' · BTI '+l.bti),node('p','Verified results before / after Module drop: '+JSON.stringify(l.result_before_drop)+' / '+JSON.stringify(l.result_after_drop)));
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),wrap=node('div');wrap.className='tablewrap';wrap.setAttribute('tabindex','0');wrap.setAttribute('role','region');wrap.setAttribute('aria-label','Code publication timeline horizontally scrollable');svg.setAttribute('viewBox','0 0 1000 190');svg.setAttribute('role','img');svg.setAttribute('aria-label','Active versus cumulative published executable-text capacity; not compiler emission or residency');
+    const maximum=Math.max(1,...l.events.map(e=>e.cumulative_published_capacity)),end=Math.max(1,l.checkpoints.at(-1).elapsed_ns),x=n=>25+950*n/end,y=n=>155-115*n/maximum;
+    for(const [key,color] of [['cumulative_published_capacity','#af8fe0'],['active_capacity','#65c7b4']]){
+      let points='25,155',previous=0;for(const e of l.events){points+=' '+x(e.elapsed_ns)+','+y(previous)+' '+x(e.elapsed_ns)+','+y(e[key]);previous=e[key];}points+=' 975,'+y(previous);
+      const line=document.createElementNS(svg.namespaceURI,'polyline');line.setAttribute('points',points);line.setAttribute('fill','none');line.setAttribute('stroke',color);line.setAttribute('stroke-width',key==='active_capacity'?2:5);svg.append(line);
+    }
+    const axis=document.createElementNS(svg.namespaceURI,'text');axis.setAttribute('x','25');axis.setAttribute('y','180');axis.setAttribute('fill','#cbd6dd');axis.textContent='0 → '+fmt(end)+' diagnostic elapsed · capacity 0 → '+fmtBytes(maximum);svg.append(axis);wrap.append(svg);body.append(node('p','Purple: cumulative published capacity · Green: active published capacity'),wrap);
+    for(const [title,records,fields] of [['Publication events',l.events,['kind','sequence','elapsed_ns','publication','address','capacity','active_capacity','cumulative_published_capacity']],['Ownership checkpoints',l.checkpoints,['stage','event_count','elapsed_ns','active_capacity','cumulative_published_capacity']]]){
+      const table=node('table'),head=node('tr'),scroll=node('div');scroll.className='tablewrap';scroll.setAttribute('tabindex','0');scroll.setAttribute('role','region');scroll.setAttribute('aria-label',title+' horizontally scrollable table');
+      for(const field of fields)head.append(node('th',field==='elapsed_ns'?'Diagnostic elapsed':field.replaceAll('_',' ')));table.append(head);
+      for(const record of records){const row=node('tr');for(const field of fields){const value=record[field],cell=node('td',field.includes('capacity')?fmtBytes(value):field==='elapsed_ns'?fmt(value):String(value));if(field==='elapsed_ns')cell.title=String(value)+' ns';row.append(cell);}table.append(row);}
+      scroll.append(table);body.append(node('h3',title),scroll);
+    }
+  };
+  select.addEventListener('change',draw);draw();
+}
+function engineTraceEvidence(root,trials){
+  const eligible=trials.filter(t=>t.engine_trace);root.replaceChildren();if(!eligible.length){root.append(node('p','No native traces delivered. The typed export retains profiling trial outcomes, including unsupported or unrecorded evidence.'));return;}
+  const launch=node('select'),window=node('select'),callWindow=node('select'),body=node('div');
+  eligible.forEach((t,i)=>{const o=node('option',t.runtime_configuration+' / '+t.workload+' / '+t.id+' / '+t.status);o.value=i;launch.append(o);});
+  launch.setAttribute('aria-label','Engine trace trial');window.setAttribute('aria-label','Native event window');callWindow.setAttribute('aria-label','Timeline call window');root.append(node('p','Trial'),launch,node('p','Event window'),window,node('p','Timeline call window'),callWindow,body);
+  let events=[];
+  const draw=()=>{
+    const t=eligible[Number(launch.value)],x=t.engine_trace;body.replaceChildren();
+    body.append(node('p','Workload: '+t.status+' · trace: '+x.status+(x.reason?' · '+x.reason:'')+' · '+x.collector+' / '+x.collector_version+' · '+x.scope));
+    const raw=node('a','Raw trial');raw.href='raw/trials/'+encodeURIComponent(t.id)+'.json';body.append(raw);
+    if(x.status==='unavailable'){body.append(node('p','No native events available.'));return;}
+    const download=node('a','Download unmodified native trace');download.href='traces/'+x.sha256+'.trace.json';download.download=x.sha256+'.trace.json';body.append(node('p'),download);
+    body.append(node('p','Collection clock: ['+x.start_clock_ns+', '+x.end_clock_ns+'] ns · trajectory epoch: '+(x.trajectory_epoch_ns||'not recorded')+' ns. Native event clocks below have microsecond resolution.'));
+    const timeline=node('div');timeline.className='engine-timeline';body.append(timeline);engineTimeline(timeline,t,events,Number(callWindow.value)||0,Number(window.value)||0);
+    if(!events.length){body.append(node('p','No events delivered; absence is not proof that compilation did not occur.'));return;}
+    const table=node('table'),head=node('tr'),wrap=node('div');wrap.className='tablewrap';
+    for(const label of ['Native index / event','Native PID / TID','Category / phase','Timestamp · µs','Duration · µs','Thread duration · µs','Native arguments'])head.append(node('th',label));table.append(head);
+    const first=Number(window.value)||0;
+    events.slice(first,first+500).forEach((e,i)=>{const row=node('tr');for(const value of [(first+i)+' / '+e.name,e.pid+' / '+e.tid,e.cat+' / '+e.ph,String(e.ts),e.dur===undefined?'Not recorded':String(e.dur),e.tdur===undefined?'Not recorded':String(e.tdur),e.args===undefined?'Not recorded':JSON.stringify(e.args)])row.append(node('td',value));table.append(row);});wrap.append(table);body.append(wrap);
+  };
+  const reset=()=>{
+    const x=eligible[Number(launch.value)].engine_trace;events=x.data?JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(x.data),c=>c.charCodeAt(0)))).traceEvents:[];
+    window.replaceChildren();for(let i=0;i<events.length;i+=500){const o=node('option','Events '+(i+1)+'–'+Math.min(i+500,events.length)+' of '+events.length);o.value=i;window.append(o);}window.value=0;
+    callWindow.replaceChildren();const samples=(eligible[Number(launch.value)].samples||[]).filter(s=>s.tier_window);for(let i=0;i<samples.length;i+=500){const o=node('option','Calls '+(i+1)+'–'+Math.min(i+500,samples.length)+' of '+samples.length);o.value=i;callWindow.append(o);}if(!samples.length){const o=node('option','No delivered tier calls');o.value=0;callWindow.append(o);}callWindow.value=0;draw();
+  };
+  launch.addEventListener('change',reset);window.addEventListener('change',draw);callWindow.addEventListener('change',draw);reset();
+}
+function timingSamples(t){
+  if(t.status!=='ok'||t.profile!=='timing')return [];
+  return (t.samples||[]).filter(s=>s.verified&&Number.isSafeInteger(s.index)&&s.index>=0&&Number.isSafeInteger(s.elapsed_ns)&&s.elapsed_ns>=0&&Number.isSafeInteger(s.operations)&&s.operations>0);
+}
+function timingTrajectory(root,trials){
+  const eligible=trials.filter(t=>timingSamples(t).length);
+  if(!eligible.length){root.append(node('p','No verified timing samples to plot. Raw trial evidence remains available below.'));return;}
+  const label=node('label','Independent launch'),choice=node('select'),windowLabel=node('label','Sample window'),windowChoice=node('select'),plot=node('div');
+  choice.id='timing-trial';windowChoice.id='timing-window';plot.id='timing-trajectory';label.append(choice);windowLabel.append(windowChoice);root.append(label,windowLabel,plot);
+  eligible.forEach((t,i)=>{const option=node('option','Block '+t.block+' · '+t.id);option.value=i;choice.append(option);});
+  function drawWindow(){
+    const t=eligible[Number(choice.value)],all=timingSamples(t),first=Number(windowChoice.value),values=all.slice(first,first+500);
+    plot.replaceChildren(node('p','Verified sample sequence for one independent launch. Warmup is amber; tier is unobserved. X positions use recorded sample indices, not elapsed time. Batch averages are not individual-request latencies.'));
+    plot.append(node('p',t.id+' · '+values.length+' of '+all.length+' verified samples shown · '+((t.samples||[]).length-all.length)+' invalid/unverified samples omitted from this plot.'));
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 1000 180');svg.setAttribute('role','img');svg.setAttribute('aria-label','Verified timing samples for one independent launch; warmup amber');
+    const max=values.reduce((n,v)=>Math.max(n,v.elapsed_ns/v.operations),1),minIndex=Math.min(...values.map(v=>v.index)),maxIndex=Math.max(...values.map(v=>v.index));
+    for(const v of values){const c=document.createElementNS(svg.namespaceURI,'circle');c.setAttribute('cx',15+(v.index-minIndex)*970/Math.max(1,maxIndex-minIndex));c.setAttribute('cy',165-(v.elapsed_ns/v.operations)/max*145);c.setAttribute('r',3);c.setAttribute('fill',v.warmup?'#edb85f':'#70cbbb');const title=document.createElementNS(svg.namespaceURI,'title');title.textContent='Sample '+v.index+' · '+fmt(v.elapsed_ns/v.operations)+' per operation · '+v.sample_type+(v.warmup?' · warmup':'');c.append(title);svg.append(c);}
+    plot.append(svg);
+  }
+  function selectTrial(){const samples=timingSamples(eligible[Number(choice.value)]);windowChoice.replaceChildren();for(let i=0;i<samples.length;i+=500){const option=node('option','Verified samples '+(i+1)+'–'+Math.min(i+500,samples.length)+' of '+samples.length);option.value=i;windowChoice.append(option);}drawWindow();}
+  choice.addEventListener('change',selectTrial);windowChoice.addEventListener('change',drawWindow);selectTrial();
+}
+function detail(s){
+  const root=el('detail');root.style.display='block';root.replaceChildren(node('h2',s.workload+' / '+s.runtime),node('p',s.scenario+' · '+s.profile+' pass · '+s.recorded_samples+' recorded samples, including warmup'),node('p',s.uncertainty));
+  if(headlineEstimate(s))root.append(node('p','Eligible median: '+fmt(s.median_ns_per_operation)+' per operation · 95% interval: '+(Number.isFinite(s.ci95_low)&&Number.isFinite(s.ci95_high)?fmt(s.ci95_low)+' – '+fmt(s.ci95_high):'unavailable')+' · '+s.independent_launches+' independent launches'));
+  else root.append(node('p','Headline latency: '+(s.latency_status==='timing_pass'?'unavailable':'withheld')+' · '+(s.latency_reason||'No eligible timing evidence')));
+  if(data.memory_source){
+    const metric=el('memory-metric').value,m=memoryCell(s.runtime,s.workload,s.scenario,metric),info=memoryMetricInfo[metric];
+    root.append(node('h3',info[0]+' · separate memory pass'),node('p',m?fmtBytes(m.median_bytes)+(metric==='host.alloc.bytes'?' per operation':'')+' · '+m.independent_launches+' independent memory launch'+(m.independent_launches===1?'':'es'):'Unavailable for this configuration and stage'),node('p',info[1]));
+    if(m?.trial_ids?.length){const link=node('a','Open raw memory trial');link.href='raw-memory/trials/'+encodeURIComponent(m.trial_ids[0])+'.json';root.append(link);}
+  }
+  const workload=manifest.lock.workloads.find(w=>w.id===s.workload),structure=artifactStructureByDigest.get(workload?.sha256);
+  root.append(node('h3','Input Wasm structure · independent analyzer'));
+  if(!structure||structure.status!=='validated')root.append(node('p','Independent structure evidence was not recorded for this artifact.'));
+  else{
+    root.append(node('p',structure.encoding+' · '+fmtBytes(structure.bytes)+' artifact · '+workload.abi+' ABI'));
+    if(structure.encoding==='core-module'){
+      root.append(node('p',structure.defined_functions+' defined / '+structure.total_functions+' total functions · '+structure.imports+' imports · '+structure.exports+' exports · '+fmtBytes(structure.code_section_bytes)+' code-section payload'));
+      root.append(node('p',fmtBytes(structure.data_bytes)+' data payload · '+fmtBytes(structure.custom_data_bytes)+' custom-section data ('+fmtBytes(structure.debug_data_bytes)+' debug) · max control depth '+structure.max_control_depth));
+      if(structure.defined_functions)root.append(node('p','Function body bytes: p50 '+fmtBytes(structure.body_bytes_p50)+' · p95 '+fmtBytes(structure.body_bytes_p95)+' · max '+fmtBytes(structure.body_bytes_max)));
+      if(structure.top_opcodes?.length)root.append(node('p','Most frequent operators: '+structure.top_opcodes.map(op=>op.name+' '+op.count).join(' · ')));
+    }else if(structure.encoding==='component')root.append(node('p',structure.component_nodes+' structure nodes · '+structure.nested_core_modules+' nested core modules; core-module function statistics do not apply to this root component.'));
+    const link=node('a','Open full independent analyzer report');link.href='raw/'+structure.report_path;root.append(link);
+  }
+  if(data.code_source){
+    root.append(node('h3','Generated native output · separate code pass'));
+    const records=codeRecords.filter(record=>record.runtime===s.runtime&&record.workload===s.workload);
+    root.append(node('p',data.code_source.note));
+    if(!records.length)root.append(node('p','No matching measured code trial for this runtime and artifact.'));
+    else{
+      const list=node('ul');for(const record of records){const item=node('li'),link=node('a',record.trial+' · '+record.status+(record.image_bytes===null?'':' · '+fmtBytes(record.image_bytes)+' mixed image'));link.href='code/index.html#record-'+record.report_record_index;item.append(link);if(record.reason)item.append(document.createTextNode(' — '+record.reason));list.append(item);}root.append(list);
+    }
+  }
+  const trials=bundle.trials.filter(t=>t.runtime_configuration===s.runtime&&t.workload===s.workload&&t.scenario===s.scenario&&t.profile===s.profile&&t.block>=0);
+  if(workload.checkpoint){
+    root.append(node('h3','Guest-state checkpoint · '+workload.checkpoint.mode));
+    root.append(node('p','Eager copy of fixed linear memory and one mutable scalar global. Not a whole-instance or copy-on-write snapshot. Restore excludes target instantiation; first write is an ordinary guest call, not a COW page fault. Source mutation verifies independence, and complete memory plus global state is checked outside timing.'));
+    const evidence=trials.flatMap(t=>(t.samples||[]).filter(sample=>sample.checkpoint_result).map(sample=>({trial:t.id,sample:sample.index,evidence:sample.checkpoint_result})));
+    if(evidence.length){const first=evidence[0].evidence;root.append(node('p',evidence.length+' verified state records · '+fmtBytes(first.payload_bytes)+' payload (memory + 4-byte scalar; excludes host object overhead). Full saved/restored state hashes and scalar values are retained in each raw trial.'));}
+  }
+  const throughput=(data.throughput||[]).find(t=>t.runtime===s.runtime&&t.workload===s.workload&&t.scenario===s.scenario&&t.profile===s.profile);
+  if(throughput){const t=throughput;root.append(node('h3','Useful-work throughput'));root.append(node('p',t.median_work_units_per_second===null?'Unavailable · '+t.status:t.median_work_units_per_second.toPrecision(5)+' '+t.work_unit+'/s · '+t.eligible_launches+' eligible launches'));if(t.ci95_low!==null&&t.ci95_high!==null)root.append(node('p','95% interval: '+t.ci95_low.toPrecision(5)+' – '+t.ci95_high.toPrecision(5)+' '+t.work_unit+'/s'));root.append(node('p',t.reason));const download=node('a','Download launch throughput evidence (Parquet)');download.href='throughput.parquet';download.download='throughput.parquet';root.append(download);}
+  if(s.latency_status==='timing_pass')timingTrajectory(root,trials);
+  else root.append(node('p','No headline latency or invocation-latency trajectory is constructed for this evidence. Raw diagnostic timers remain in the trial JSON and samples.parquet.'));
+  const list=node('ul');for(const t of trials){const li=node('li'),a=node('a',t.id+' · '+t.status);a.href='raw/trials/'+encodeURIComponent(t.id)+'.json';li.append(a);if(t.reason)li.append(document.createTextNode(' — '+t.reason));list.append(li);}root.append(list);
+  const details=node('details'),pre=node('pre',JSON.stringify(manifest.lock.workloads.find(w=>w.id===s.workload),null,2));details.append(node('summary','Artifact, work units and correctness contract'),pre);root.append(details);
+}
+function overviewEntries(summaries,configurations,workload,scenario){
+  const byRuntime=new Map(summaries.filter(s=>s.workload===workload&&s.scenario===scenario).map(s=>[s.runtime,s]));
+  return configurations.map(c=>({id:c.id,summary:byRuntime.get(c.id),available:byRuntime.has(c.id)&&headlineEstimate(byRuntime.get(c.id))})).sort((a,b)=>
+    a.available!==b.available?(a.available?-1:1):a.available?a.summary.median_ns_per_operation-b.summary.median_ns_per_operation:a.id.localeCompare(b.id));
+}
+function overviewStages(scenarios){
+  const known={compile:{group:'Compile',label:'Compile',tone:'compile',order:0},instantiate:{group:'Instantiate',label:'Instantiate',tone:'instantiate',order:1},'first-call':{group:'Execution',label:'First call',tone:'first-call',order:2},steady:{group:'Execution',label:'Steady',tone:'execution',order:3}};
+  for(const [index,[id,label,tone]] of [['checkpoint-create','Checkpoint creation','compile'],['checkpoint-restore','Checkpoint restore','instantiate'],['checkpoint-first-write','First write','first-call'],['checkpoint-execute','Post-restore execution','execution']].entries())known[id]={group:'Guest checkpoints',label,tone,order:10+index};
+  known.sustained={group:'Execution',label:'Sustained execution',tone:'execution',order:4};
+  for(const [index,[id,label,tone]] of [['continuation-create','Stack capture','compile'],['continuation-resume','Guest resumption','instantiate'],['continuation-first-write','First write','first-call'],['continuation-execute','Post-restore execution','execution']].entries())known[id]={group:'Native execution-stack continuations',label,tone,order:20+index};
+  for(const [index,[id,label,tone]] of [['process-snapshot-capture','Process capture','compile'],['process-snapshot-restore','Child restoration','instantiate'],['process-snapshot-first-write','First write','first-call'],['process-snapshot-execute','Post-restore execution','execution']].entries())known[id]={group:'Linux process snapshots',label,tone,order:30+index};
+  return scenarios.filter(id=>id!=='harness-calibration').map((id,index)=>({id,...(known[id]||{group:'Other stages',label:id.replaceAll('-',' '),tone:'other',order:100+index})})).sort((a,b)=>a.order-b.order);
+}
+function compositeEntries(summaries,configurations,workload,selectedStages){
+  const cells=new Map(summaries.filter(s=>s.workload===workload&&selectedStages.some(stage=>stage.id===s.scenario)).map(s=>[s.runtime+'\u0000'+s.scenario,s]));
+  return configurations.map(configuration=>{
+    const parts=selectedStages.map(stage=>{const summary=cells.get(configuration.id+'\u0000'+stage.id);return {stage,summary,available:!!summary&&headlineEstimate(summary)};});
+    const complete=parts.every(part=>part.available),total=complete?parts.reduce((sum,part)=>sum+part.summary.median_ns_per_operation,0):null;
+    return {id:configuration.id,parts,complete,total};
+  }).sort((a,b)=>a.complete!==b.complete?(a.complete?-1:1):a.complete?a.total-b.total:a.id.localeCompare(b.id));
+}
+const runtimeColors=['#126689','#986029','#366db7','#a74854','#287b61','#735aa2','#936b38','#377d83'];
+const stages=overviewStages(manifest.lock.options.scenarios);
+for(const stage of stages){const option=node('option',stage.label);option.value=stage.id;el('pareto-stage').append(option);}
+el('pareto-stage').addEventListener('change',renderPareto);
+const memoryMetricInfo={
+  'host.rust.alloc.bytes':['Rust allocator requests / operation','Successful requested layout bytes routed through Rust GlobalAlloc/System, including full new-size realloc requests. Dedicated instrumented memory build; excludes mmap, foreign allocators and physical RSS.','Rust requests/op'],
+  'host.rust.outstanding.end':['Rust outstanding requests at API return','Outstanding requested layout bytes across the instrumented process while API output is held, before verification/release. Not physical retained memory or guest-only bytes.','Rust outstanding'],
+  'host.rust.outstanding.observed_peak':['Rust observed outstanding high-water','Maximum outstanding requested layout bytes at serialized allocator-hook updates during the API window. Excludes mmap and transient allocator-internal realloc copies; not physical peak memory.','Rust observed peak'],
+  'host.alloc.bytes':['Go allocations / operation','Go adapter heap allocation volume per operation; excludes native and other-process allocations.','Alloc/op'],
+  'cgroup.memory.phase_peak':['Cgroup phase peak','Same-descriptor cgroup peak for the declared phase barrier; includes adapter transport and background work, not just guest memory.','Phase peak'],
+  'process.peak_rss':['Peak process RSS','Maximum resident set of the adapter process over the entire trial, including startup and setup; not a stage-only peak.','Peak RSS'],
+  'process.rss':['Process RSS after batch','Adapter-process resident set at the after-batch snapshot; not allocation volume or a phase delta.','RSS after'],
+  'host.heap.end':['Go heap at phase end','Go adapter heap snapshot; not retained-live memory or allocation volume.','Go heap end'],
+  'host.js_heap.end':['V8 heap at phase end','V8 isolate heap snapshot; excludes native and other-process memory.','V8 heap end'],
+  'checkpoint.payload_bytes':['Guest checkpoint payload','Exact eager-copy payload: fixed linear memory plus one 4-byte scalar. Excludes host object overhead, runtime state and code; not whole-instance or COW snapshot size.','Checkpoint payload']
+};
+const memoryStages=data.memory_stages||[];
+const codeRecords=data.code_records||[];
+const artifactStructureByDigest=new Map((data.artifact_structures||[]).map(item=>[item.sha256,item]));
+const memoryByCell=new Map(memoryStages.map(m=>[m.runtime+'\u0000'+m.workload+'\u0000'+m.scenario+'\u0000'+m.metric,m]));
+const memoryCell=(runtime,workload,scenario,metric)=>memoryByCell.get(runtime+'\u0000'+workload+'\u0000'+scenario+'\u0000'+metric);
+const fmtBytes=n=>n>=1024**3?(n/1024**3).toFixed(2)+' GiB':n>=1024**2?(n/1024**2).toFixed(2)+' MiB':n>=1024?(n/1024).toFixed(1)+' KiB':n.toFixed(0)+' B';
+for(const workload of manifest.lock.workloads){const option=node('option',workload.id);option.value=workload.id;el('chart-workload').append(option);}
+for(const [metric,[label]] of Object.entries(memoryMetricInfo)){const option=node('option',label);option.value=metric;el('memory-metric').append(option);}
+el('memory-metric').value=memoryStages.some(m=>m.metric==='process.peak_rss')?'process.peak_rss':Object.keys(memoryMetricInfo).find(metric=>memoryStages.some(m=>m.metric===metric))||'process.peak_rss';
+el('memory-metric').disabled=!data.memory_source;
+if(data.memory_source){el('memory-source').append(document.createTextNode('Separate memory run: '+data.memory_source.id+' · '));const link=node('a','manifest and raw evidence');link.href='raw-memory/manifest.json';el('memory-source').append(link);}else el('memory-source').textContent='No memory run attached. Generate the report with --memory-run to populate this track.';
+const stageInputs=new Map();
+for(const stage of stages){
+  const label=node('label'),input=node('input'),swatch=node('i'),name=node('span',stage.id==='steady'?'Steady execution':stage.label);
+  label.className='stage-option';input.type='checkbox';input.value=stage.id;input.checked=stage.id==='compile'||stage.id==='instantiate'||stage.id==='first-call'||(stage.id==='steady'&&!stages.some(s=>s.id==='first-call'));
+  if(stage.group==='Guest checkpoints'||stage.group==='Native execution-stack continuations'||stage.group==='Linux process snapshots')input.checked=true;
+  swatch.className=stage.tone;label.append(input,swatch,name);el('stage-options').append(label);stageInputs.set(stage.id,input);
+  input.addEventListener('change',()=>{if(input.checked&&(stage.id==='first-call'||stage.id==='steady')){const other=stageInputs.get(stage.id==='steady'?'first-call':'steady');if(other)other.checked=false;}renderOverview();});
+}
+if(![...stageInputs.values()].some(input=>input.checked)&&stages.length)stageInputs.get(stages[0].id).checked=true;
+const runtimeInputs=new Map();
+for(const [index,configuration] of manifest.lock.runtime_configurations.entries()){
+  const label=node('label'),input=node('input'),swatch=node('span'),name=node('span',configuration.id),count=node('span');
+  label.className='filter-item';input.type='checkbox';input.checked=true;input.value=configuration.id;
+  swatch.className='swatch';swatch.style.backgroundColor=runtimeColors[index%runtimeColors.length];count.className='filter-count';
+  label.append(input,swatch,name,count);el('runtime-filter-list').append(label);runtimeInputs.set(configuration.id,{input,count});
+  input.addEventListener('change',renderOverview);
+}
+function renderOverview(){
+  const query=el('overview-query').value.toLowerCase().trim();
+  const memoryMetric=el('memory-metric').value;
+  const selectedStages=stages.filter(stage=>stageInputs.get(stage.id).checked);
+  const configurations=manifest.lock.runtime_configurations.filter(c=>runtimeInputs.get(c.id).input.checked);
+  renderHeadlineGraph(configurations,selectedStages);
+  renderPareto();
+  const workloads=manifest.lock.workloads.filter(w=>w.id.toLowerCase().includes(query));
+  const groups=new Map();for(const workload of workloads){const family=workload.family||'Other';if(!groups.has(family))groups.set(family,[]);groups.get(family).push(workload);}
+  el('overview-count').textContent=workloads.length+' / '+manifest.lock.workloads.length+' workloads · '+configurations.length+' / '+manifest.lock.runtime_configurations.length+' configurations';
+  el('overview-context').textContent=selectedStages.length?'Selected stage medians are combined for display; this is not an observed end-to-end measurement. Longer bars mean more time for this workload.':'Select at least one stage to draw the bars.';
+  el('runtime-filter-status').textContent=configurations.length+' configurations selected';
+  for(const configuration of manifest.lock.runtime_configurations){const eligible=selectedStages.length?manifest.lock.workloads.filter(workload=>compositeEntries(data.summaries,[configuration],workload.id,selectedStages)[0].complete).length:0;runtimeInputs.get(configuration.id).count.textContent=eligible+'/'+manifest.lock.workloads.length;}
+  const root=el('overview-groups');root.replaceChildren();
+  if(!selectedStages.length){root.append(node('p','Select at least one stage to see comparisons.'));return;}
+  if(!configurations.length){root.append(node('p','Select at least one runtime configuration to see comparisons.'));return;}
+  if(!workloads.length){root.append(node('p','No workloads match that search.'));return;}
+  for(const [family,items] of groups){
+    const section=node('section'),heading=node('div'),title=node('h3',family.replaceAll('_',' ')),count=node('span',items.length+' workload'+(items.length===1?'':'s')),grid=node('div');
+    heading.className='family-heading';heading.append(title,count);grid.className='workload-grid';section.append(heading,grid);
+    for(const workload of items){
+      const entries=compositeEntries(data.summaries,configurations,workload.id,selectedStages),complete=entries.filter(entry=>entry.complete),max=Math.max(0,...complete.map(entry=>entry.total));
+      const card=node('article'),head=node('div'),name=node('h4',workload.id),coverage=node('span',complete.length+'/'+entries.length+' complete'),list=node('ol');
+      card.className='workload-card';head.className='workload-card-head';head.append(name,coverage);list.className='composite-bars';card.append(head,list);
+      for(const entry of entries){
+        const row=node('li'),label=node('span',entry.id),track=node('div'),value=node('span');
+        row.className='composite-row'+(entry.complete?'':' incomplete');label.className='composite-name';track.className='composite-track';value.className='composite-value';
+        value.textContent=entry.complete?fmt(entry.total):'Incomplete';
+        if(entry.complete)for(const part of entry.parts){
+          const s=part.summary,button=node('button'),tooltip=node('span'),stage=part.stage;
+          button.type='button';button.className='composite-segment '+stage.tone;button.style.width=(max===0?0:100*s.median_ns_per_operation/max)+'%';
+          button.setAttribute('aria-label',entry.id+' · '+stage.label+' · '+fmt(s.median_ns_per_operation));
+          tooltip.className='bar-tooltip';tooltip.id='tip-'+workload.id.replaceAll(/[^a-zA-Z0-9_-]/g,'-')+'-'+stage.id+'-'+entry.id.replaceAll(/[^a-zA-Z0-9_-]/g,'-');button.setAttribute('aria-describedby',tooltip.id);
+          const m=memoryCell(entry.id,workload.id,stage.id,memoryMetric);
+          tooltip.append(node('strong',entry.id+' · '+stage.label));
+          tooltip.append(node('span','Time: '+fmt(s.median_ns_per_operation)+' / op'));
+          tooltip.append(node('span',memoryMetricInfo[memoryMetric][2]+': '+(m?fmtBytes(m.median_bytes):'unavailable')));
+          button.append(tooltip);button.addEventListener('click',()=>{el('evidence-panel').open=true;el('scenario').value=stage.id;el('runtime').value=entry.id;el('query').value=workload.id;draw();detail(s);el('detail').scrollIntoView({behavior:'smooth',block:'start'});});track.append(button);
+        }
+        else{const missing=entry.parts.filter(part=>!part.available).map(part=>part.stage.label).join(', ');track.setAttribute('aria-label','No complete estimate; missing '+missing);value.title='Missing or withheld: '+missing;}
+        row.append(label,track,value);list.append(row);
+      }
+      grid.append(card);
+    }
+    root.append(section);
+  }
+}
+function openCellEvidence(summary){
+  el('evidence-panel').open=true;el('scenario').value=summary.scenario;el('runtime').value=summary.runtime;el('query').value=summary.workload;draw();detail(summary);el('detail').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function toggleHeadlineExpansion(){
+  const button=el('chart-expand'),expanded=button.getAttribute('aria-expanded')!=='true';
+  document.querySelector('main').classList.toggle('chart-expanded',expanded);
+  button.setAttribute('aria-expanded',String(expanded));button.textContent=expanded?'Compact graph':'Expand graph';
+}
+el('chart-expand').addEventListener('click',toggleHeadlineExpansion);
+function headlineTimeTooltip(runtime,label,time,stageRSS){
+  return runtime+' · '+label+'\nTime: '+(Number.isFinite(time)?fmt(time)+' / op':'unavailable')+'\nPeak RSS: '+(stageRSS?fmtBytes(stageRSS.median_bytes):'unavailable');
+}
+function headlineGraphSpecs(selectedStages){
+  if(!selectedStages.length)return [];
+  return [{id:'lifecycle',label:'Latency · selected stages',tone:'lifecycle',kind:'time'},...selectedStages.map(stage=>({id:stage.id,label:'Peak RSS · '+stage.label,tone:'rss',kind:'rss'}))];
+}
+function openMemoryEvidence(memory,configuration,workload){
+  const root=el('headline-memory-detail'),close=node('button','Close');root.replaceChildren();root.hidden=false;
+  close.type='button';close.addEventListener('click',()=>{root.hidden=true;root.replaceChildren();});root.append(close);
+  root.append(node('h4',configuration+' · '+workload+' · '+memory.scenario+' peak RSS'));
+  root.append(node('p','Median: '+fmtBytes(memory.median_bytes)+' · '+memory.independent_launches+' independent memory launch'+(memory.independent_launches===1?'':'es')));
+  root.append(node('p',Number.isFinite(memory.ci95_low_bytes)&&Number.isFinite(memory.ci95_high_bytes)?'95% bootstrap interval: '+fmtBytes(memory.ci95_low_bytes)+' – '+fmtBytes(memory.ci95_high_bytes):'95% interval unavailable: fewer than three independent launches.'));
+  root.append(node('p',memoryMetricInfo['process.peak_rss'][1]+' Each value below is a whole-process maximum from a separate memory-profile launch.'));
+  const list=node('ul');for(const launch of memory.launch_values||[]){const item=node('li'),link=node('a',launch.trial_id+' · '+fmtBytes(launch.bytes));link.href='raw-memory/trials/'+encodeURIComponent(launch.trial_id)+'.json';item.append(link);list.append(item);}root.append(list);
+}
+function renderHeadlineGraph(configurations,selectedStages){
+  const root=el('headline-chart-grid');root.replaceChildren();
+  const memoryDetail=el('headline-memory-detail');memoryDetail.hidden=true;memoryDetail.replaceChildren();
+  const workload=el('chart-workload').value;
+  const specs=headlineGraphSpecs(selectedStages);
+  const title=el('headline-chart-title');if(title)title.textContent=selectedStages.some(stage=>stage.id.startsWith('process-snapshot-'))?'Process capture, restoration, execution & peak RSS':selectedStages.some(stage=>stage.id.startsWith('continuation-'))?'Native stack capture, resumption, execution & peak RSS':'Compile latency, instantiate, execution & peak RSS';
+  const legend=el('headline-stage-legend');if(legend){legend.replaceChildren();for(const stage of selectedStages){const key=node('span'),swatch=node('i');key.className='stage-key';swatch.className=stage.tone;key.append(swatch,node('span',stage.label));legend.append(key);}}
+  root.style.setProperty('--chart-cols',specs.length);
+  if(!specs.length){root.append(node('p','Select at least one stage to see the graph.'));el('headline-chart-note').textContent='';return;}
+  el('headline-chart-note').textContent='Lower is better. Latency uses one shared scale; all RSS bars use another shared scale. Stage medians are measured separately, not end-to-end. RSS is the whole-process peak of each stage-focused run, including startup and setup—not a phase-only peak. Hover for time and memory; click for evidence. Missing is not zero.';
+  if(selectedStages.some(stage=>stage.id.startsWith('continuation-')))el('headline-chart-note').textContent+=' Native continuations restore execution stacks only, not memory/globals or whole instances. Guest resumption includes control transfer and the first resumed host-marker transition; it is not restore API-return latency. First write is not a COW-fault measurement.';
+  if(selectedStages.some(stage=>stage.id.startsWith('process-snapshot-')))el('headline-chart-note').textContent+=' Process capture/restoration include ready acknowledgments; first write is not isolated COW-fault latency. Per-process snapshot footprints are in detailed evidence, not substituted for peak RSS.';
+  if(!configurations.length){root.append(node('p','Select a runtime configuration to see the graph.'));return;}
+  const entries=compositeEntries(data.summaries,configurations,workload,selectedStages);
+  const rows=configurations.map(configuration=>{const entry=entries.find(e=>e.id===configuration.id);return {configuration,entry,cells:specs.map(spec=>{const memory=spec.kind==='rss'?memoryCell(configuration.id,workload,spec.id,'process.peak_rss'):null;return {spec,memory,value:spec.kind==='time'?(entry.complete?entry.total:null):(memory?.median_bytes??null)};})};});
+  const maxima=specs.map((_,index)=>Math.max(0,...rows.map(row=>row.cells[index].value??0)));
+  const rssMaximum=Math.max(0,...rows.flatMap(row=>row.cells.filter(cell=>cell.spec.kind==='rss').map(cell=>cell.value??0)));
+  specs.forEach((spec,index)=>{if(spec.kind==='rss')maxima[index]=rssMaximum;});
+  const headings=node('div');headings.className='headline-chart-row headings';headings.append(node('span','Runtime'));
+  specs.forEach((spec,index)=>{const heading=node('span',spec.label),scale=node('span');scale.className='headline-scale';const measured=rows.some(row=>row.cells[index].value!==null);scale.append(node('span','0'),node('span',measured?(spec.kind==='rss'?fmtBytes(maxima[index]):fmt(maxima[index])):'No measurements'));heading.append(scale);headings.append(heading);});root.append(headings);
+  for(const [rowIndex,row] of rows.entries()){
+    const line=node('div'),runtime=node('span',row.configuration.id);line.className='headline-chart-row';runtime.className='headline-chart-runtime';line.append(runtime);
+    row.cells.forEach(({spec,summary,memory,value},index)=>{
+      if(spec.kind==='time'){
+        const cell=node('div'),number=node('span',value===null?'Incomplete':fmt(value)),track=node('div'),actions=node('div');actions.className='headline-stage-actions';
+        cell.className='headline-chart-cell lifecycle';number.className='headline-chart-value';track.className='composite-track headline-lifecycle-track';
+        const missing=row.entry.parts.filter(part=>!part.available).map(part=>part.stage.label);
+        track.setAttribute('aria-label',missing.length?'Missing: '+missing.join(', '):'Selected stage latency');
+        for(const part of row.entry.parts){
+          const stage=part.stage,s=part.summary,link=node(part.available?'button':'span'),swatch=node('i');
+          link.className='stage-key headline-stage-value';swatch.className=stage.tone;
+          link.append(swatch,node('span',stage.label+' · '+(part.available?fmt(s.median_ns_per_operation):'Not recorded')));
+          if(part.available){link.type='button';link.setAttribute('aria-label',row.configuration.id+' · '+stage.label+' evidence · '+fmt(s.median_ns_per_operation));link.title=headlineTimeTooltip(row.configuration.id,stage.label,s.median_ns_per_operation,memoryCell(row.configuration.id,workload,stage.id,'process.peak_rss'));link.addEventListener('click',()=>openCellEvidence(s));}
+          actions.append(link);
+          if(!row.entry.complete||!part.available)continue;
+          const button=node('button'),tooltip=node('span');
+          button.type='button';button.className='composite-segment '+stage.tone;
+          button.style.width=(maxima[0]===0?0:100*s.median_ns_per_operation/maxima[0])+'%';
+          button.setAttribute('aria-label',row.configuration.id+' · '+stage.label+' · '+fmt(s.median_ns_per_operation));
+          tooltip.className='bar-tooltip';tooltip.id='headline-time-'+rowIndex+'-'+row.entry.parts.indexOf(part);tooltip.setAttribute('role','tooltip');button.setAttribute('aria-describedby',tooltip.id);tooltip.append(node('strong',row.configuration.id+' · '+stage.label),node('span','Time: '+fmt(s.median_ns_per_operation)+' / op'),node('span','Peak RSS: '+(memoryCell(row.configuration.id,workload,stage.id,'process.peak_rss')?fmtBytes(memoryCell(row.configuration.id,workload,stage.id,'process.peak_rss').median_bytes):'unavailable')));
+          const fraction=maxima[0]===0?0:s.median_ns_per_operation/maxima[0];
+          if(fraction>=.15){const label=node('span',stage.label);label.className='headline-stage-label';label.setAttribute('aria-hidden','true');button.append(label);}
+          button.append(tooltip);button.addEventListener('click',()=>openCellEvidence(s));track.append(button);
+        }
+        if(missing.length){cell.className+=' missing';number.title='Missing: '+missing.join(', ');}
+        cell.append(node('small','Latency · selected stages'),number,track);if(actions.children.length)cell.append(actions);line.append(cell);return;
+      }
+      const available=value!==null,cell=node(available?'button':'span'),label=node('small',spec.label),number=node('span',available?(spec.kind==='rss'?fmtBytes(value):fmt(value)):'Not recorded'),track=node('span'),fill=node('span');
+      const stagePart=row.entry.parts.find(part=>part.stage.id===spec.id);
+      cell.className='headline-chart-cell '+spec.tone+(spec.kind==='rss'?' '+stagePart.stage.tone:'')+(available?'':' missing');number.className='headline-chart-value';track.className='headline-chart-track';fill.className='headline-chart-fill';
+      cell.setAttribute('aria-label',row.configuration.id+' · '+spec.label+' · '+number.textContent);
+      if(available){fill.style.width=(maxima[index]===0?0:100*value/maxima[index])+'%';cell.type='button';if(spec.kind==='rss'){cell.addEventListener('click',()=>openMemoryEvidence(memory,row.configuration.id,workload));cell.title=headlineTimeTooltip(row.configuration.id,stagePart.stage.label,stagePart.available?stagePart.summary.median_ns_per_operation:null,memory);}else{const stageRSS=memoryCell(row.configuration.id,workload,spec.id,'process.peak_rss');cell.addEventListener('click',()=>openCellEvidence(summary));cell.title=headlineTimeTooltip(row.configuration.id,spec.label,value,stageRSS);}}
+      if(available)track.append(fill);cell.append(label,number,track);
+      if(available&&spec.kind==='rss'){const tooltip=node('span');tooltip.className='bar-tooltip';tooltip.id='headline-rss-'+rowIndex+'-'+index;tooltip.setAttribute('role','tooltip');cell.setAttribute('aria-describedby',tooltip.id);const lines=headlineTimeTooltip(row.configuration.id,stagePart.stage.label,stagePart.available?stagePart.summary.median_ns_per_operation:null,memory).split('\n');lines.forEach((text,i)=>tooltip.append(node(i===0?'strong':'span',text)));cell.append(tooltip);}
+      line.append(cell);
+    });
+    root.append(line);
+  }
+}
+el('overview-query').addEventListener('input',renderOverview);el('memory-metric').addEventListener('change',renderOverview);el('chart-workload').addEventListener('change',renderOverview);renderOverview();
+function selectedParetoPoints(points,ids){
+  const selected=points.filter(p=>ids.includes(p.runtime));
+  return selected.map(p=>{const available=p.status==='available'&&Number.isFinite(p.time_ns)&&p.time_ns>=0&&Number.isFinite(p.rss_bytes)&&p.rss_bytes>=0;
+    const dominated=available?selected.filter(q=>q.status==='available'&&Number.isFinite(q.time_ns)&&Number.isFinite(q.rss_bytes)&&q.time_ns>=0&&q.rss_bytes>=0&&q.time_ns<=p.time_ns&&q.rss_bytes<=p.rss_bytes&&(q.time_ns<p.time_ns||q.rss_bytes<p.rss_bytes)).map(q=>q.runtime).sort():[];
+    return {...p,status:available?'available':'unavailable',dominated_by:dominated,frontier:available&&!dominated.length};});
+}
+function renderPareto(){
+  const plot=el('pareto-plot'),tableRoot=el('pareto-table'),detail=el('pareto-detail');plot.replaceChildren();tableRoot.replaceChildren();detail.replaceChildren();detail.hidden=true;
+  const workload=el('chart-workload').value,scenario=el('pareto-stage').value;
+  const ids=manifest.lock.runtime_configurations.filter(c=>runtimeInputs.get(c.id).input.checked).map(c=>c.id);
+  const points=selectedParetoPoints((data.pareto||[]).filter(p=>p.workload===workload&&p.scenario===scenario),ids),available=points.filter(p=>p.status==='available');
+  el('pareto-coverage').textContent=workload+' · '+scenario+' · '+available.length+' / '+points.length+' configurations have both measurements · '+available.filter(p=>p.frontier).length+' on the median frontier';
+  if(!available.length)plot.append(node('p',data.memory_source?'No eligible timing/RSS pairs for this selection. Missing measurements remain listed below.':'No matched memory pass attached. Generate a report with --memory-run to compare latency and RSS.'));
+  else {
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 1000 420');svg.setAttribute('role','group');svg.setAttribute('aria-label',workload+' · '+scenario+' latency versus whole-process peak RSS');
+    const make=(tag,attrs,text)=>{const n=document.createElementNS(svg.namespaceURI,tag);for(const [k,v]of Object.entries(attrs))n.setAttribute(k,v);if(text!==undefined)n.textContent=text;svg.append(n);return n;};
+    const maxX=Math.max(1,...available.map(p=>Math.max(p.time_ns,Number.isFinite(p.time_ci95_high_ns)?p.time_ci95_high_ns:0)))*1.08,maxY=Math.max(1,...available.map(p=>Math.max(p.rss_bytes,Number.isFinite(p.rss_ci95_high_bytes)?p.rss_ci95_high_bytes:0)))*1.08;
+    const x=v=>90+Math.max(0,Math.min(maxX,v))/maxX*865,y=v=>350-Math.max(0,Math.min(maxY,v))/maxY*315;
+    for(let i=0;i<=4;i++){const tx=maxX*i/4,my=maxY*i/4;make('line',{x1:x(tx),x2:x(tx),y1:35,y2:350,stroke:'#35434b'});make('line',{x1:90,x2:955,y1:y(my),y2:y(my),stroke:'#35434b'});make('text',{x:x(tx),y:373,fill:'#aebfc9','font-size':12,'text-anchor':'middle'},fmt(tx));make('text',{x:80,y:y(my)+4,fill:'#aebfc9','font-size':12,'text-anchor':'end'},fmtBytes(my));}
+    make('text',{x:520,y:406,fill:'#cfdae0','font-size':13,'text-anchor':'middle'},'Stage latency / operation →');make('text',{x:90,y:20,fill:'#cfdae0','font-size':12},'Whole-process peak RSS ↑');
+    for(const p of available){const color=runtimeColors[manifest.lock.runtime_configurations.findIndex(c=>c.id===p.runtime)%runtimeColors.length];
+      if(Number.isFinite(p.time_ci95_low_ns)&&Number.isFinite(p.time_ci95_high_ns))make('line',{x1:x(p.time_ci95_low_ns),x2:x(p.time_ci95_high_ns),y1:y(p.rss_bytes),y2:y(p.rss_bytes),stroke:color,'stroke-width':2});
+      if(Number.isFinite(p.rss_ci95_low_bytes)&&Number.isFinite(p.rss_ci95_high_bytes))make('line',{x1:x(p.time_ns),x2:x(p.time_ns),y1:y(p.rss_ci95_low_bytes),y2:y(p.rss_ci95_high_bytes),stroke:color,'stroke-width':2});
+      const dot=make('circle',{cx:x(p.time_ns),cy:y(p.rss_bytes),r:p.frontier?8:6,fill:color,stroke:p.frontier?'#fff':'#172030','stroke-width':p.frontier?3:1,tabindex:0,role:'button','aria-label':p.runtime+' · '+fmt(p.time_ns)+' · '+fmtBytes(p.rss_bytes)+' · open evidence'}),title=document.createElementNS(svg.namespaceURI,'title');title.textContent=p.runtime+'\nTime: '+fmt(p.time_ns)+' / op\nPeak RSS: '+fmtBytes(p.rss_bytes);dot.append(title);dot.addEventListener('click',()=>openParetoEvidence(p));dot.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openParetoEvidence(p);}});
+    }plot.append(svg);
+  }
+  const table=node('table'),head=node('thead'),heading=node('tr'),body=node('tbody');for(const text of ['Runtime configuration','Stage latency / op','Peak RSS','Timing / memory launches','Median frontier'])heading.append(node('th',text));head.append(heading);table.append(head,body);
+  for(const p of points){const row=node('tr'),name=node('td'),button=node('button',p.runtime);button.type='button';button.addEventListener('click',()=>openParetoEvidence(p));name.append(button);row.append(name,node('td',Number.isFinite(p.time_ns)?fmt(p.time_ns):'Not recorded'),node('td',Number.isFinite(p.rss_bytes)?fmtBytes(p.rss_bytes):'Not recorded'),node('td',p.time_launches+' / '+p.memory_launches),node('td',p.status!=='available'?p.reason:p.frontier?'On frontier':'Dominated by '+p.dominated_by.join(', ')));body.append(row);}tableRoot.append(table);
+}
+function openParetoEvidence(p){
+  const root=el('pareto-detail');root.replaceChildren();root.hidden=false;root.append(node('h4',p.runtime+' · '+p.workload+' · '+p.scenario),node('p',p.reason));
+  const interval=(lo,hi,format)=>Number.isFinite(lo)&&Number.isFinite(hi)?format(lo)+' – '+format(hi):'Unavailable: fewer than three eligible independent launches';
+  root.append(node('p','Timing 95% interval: '+interval(p.time_ci95_low_ns,p.time_ci95_high_ns,fmt)),node('p','Peak RSS 95% interval: '+interval(p.rss_ci95_low_bytes,p.rss_ci95_high_bytes,fmtBytes)));
+  const timing=data.summaries.find(s=>s.runtime===p.runtime&&s.workload===p.workload&&s.scenario===p.scenario);if(timing){const button=node('button','Open timing measurements and raw trials');button.type='button';button.addEventListener('click',()=>openCellEvidence(timing));root.append(button);}
+  const list=node('ul');for(const id of p.memory_trials||[]){const item=node('li'),link=node('a','Memory trial '+id);link.href='raw-memory/trials/'+encodeURIComponent(id)+'.json';item.append(link);list.append(item);}root.append(list);
+  for(const [label,path]of [['Timing manifest','raw/manifest.json'],['Memory manifest','raw-memory/manifest.json']]){if(label==='Memory manifest'&&!data.memory_source)continue;const link=node('a',label);link.href=path;root.append(link);}
+}
+function phaseCPURows(items){
+  const groups=new Map();
+  for(const item of items){const key=item.workload+'\u0000'+item.runtime+'\u0000'+item.scenario;if(!groups.has(key))groups.set(key,{workload:item.workload,runtime:item.runtime,scenario:item.scenario,metrics:{}});groups.get(key).metrics[item.metric]=item;}
+  return [...groups.values()].sort((a,b)=>a.workload.localeCompare(b.workload)||a.runtime.localeCompare(b.runtime)||a.scenario.localeCompare(b.scenario));
+}
+function hasPhaseCPUData(rows){return rows.some(row=>Object.values(row.metrics).some(item=>item.median_ns!==null));}
+const phaseCPU=phaseCPURows(data.phase_cpu||[]);
+if(phaseCPU.length){
+  el('phase-cpu').hidden=false;
+  if(!hasPhaseCPUData(phaseCPU)){
+    el('phase-cpu-control').hidden=true;el('phase-cpu-table').hidden=true;el('phase-cpu-unavailable').hidden=false;
+    el('phase-cpu-unavailable').textContent='No eligible cgroup CPU time in this memory pass. '+phaseCPU.length+' configuration/workload/stage cells remain unavailable; inspect the raw memory trials and dataset for collector reasons.';
+  }
+  for(const scenario of [...new Set(phaseCPU.map(row=>row.scenario))].sort()){const option=node('option',scenario);option.value=scenario;el('phase-cpu-scenario').append(option);}
+  function drawPhaseCPU(){
+    const root=el('phase-cpu-rows'),scenario=el('phase-cpu-scenario').value;root.replaceChildren();
+    const value=row=>row?.median_ns===null||row?.median_ns===undefined?'Unavailable':fmt(row.median_ns);
+    for(const group of phaseCPU.filter(row=>row.scenario===scenario)){
+      const total=group.metrics['time.cpu.total'],user=group.metrics['time.cpu.user'],system=group.metrics['time.cpu.system'];
+      const tr=node('tr'),name=node('td',group.workload+' / '+group.runtime),coverage=node('td',total?total.independent_launches+' / '+total.attempted_launches:'0 / 0');
+      const interval=total?.median_ns===null||total?.median_ns===undefined?'Unavailable':Number.isFinite(total.ci95_low_ns)&&Number.isFinite(total.ci95_high_ns)?fmt(total.ci95_low_ns)+' – '+fmt(total.ci95_high_ns):'Insufficient launches';
+      const totalCell=node('td',value(total));totalCell.title=total?'Unavailable launches: '+total.unavailable_launches+' · other outcomes: '+JSON.stringify(total.other_outcomes):'No total CPU evidence';
+      const raw=node('td'),details=node('details'),list=node('ul');details.append(node('summary','Open trials'));
+      for(const id of total?.trial_ids||[]){const item=node('li'),link=node('a',id);link.href=(data.memory_source?'raw-memory/':'raw/')+'trials/'+encodeURIComponent(id)+'.json';item.append(link);list.append(item);}
+      details.append(list);raw.append(details);
+      tr.append(name,totalCell,node('td',value(user)+' / '+value(system)),node('td',interval),coverage,raw);root.append(tr);
+    }
+  }
+  if(!el('phase-cpu-table').hidden){el('phase-cpu-scenario').addEventListener('change',drawPhaseCPU);drawPhaseCPU();}
+}
+el('overview-evidence-link').addEventListener('click',()=>{el('evidence-panel').open=true;});
+for(const id of ['scenario','runtime','query'])el(id).addEventListener('input',draw);draw();
+const admissions=new Map((bundle.artifact_admission||[]).map(a=>[a.sha256,a]));
+const analyzer=manifest.lock.analyzer;
+el('analyzer-identity').textContent=analyzer?analyzer.name+' '+analyzer.version+' · '+analyzer.analysis_version+' · policy: '+analyzer.validation_profile:'Independent admission was not recorded in this legacy lock.';
+for(const w of manifest.lock.workloads){const a=admissions.get(w.sha256),row=node('tr'),identity=node('td');identity.append(node('div',w.id),node('code',w.sha256));row.append(identity,node('td',a?.status||'not_recorded'));const features=a?.feature_status==='conditional_single_flag_necessity'?(a.necessary_flags?.join(', ')||'No individually necessary flags detected'):'Feature probes not recorded';row.append(node('td',features));const links=node('td');if(a?.report_path){const link=node('a','Independent analyzer report');link.href='raw/'+a.report_path;links.append(link);}else links.textContent=a?.reason||'Unavailable';row.append(links);el('admission-rows').append(row);}
+const curves=[...(data.scaling||[]),...(data.memory_scaling||[])];
+for(const row of el('admission-rows').children){['Workload / exact artifact','Admission','Conditional feature requirements','Evidence'].forEach((label,i)=>row.children[i].dataset.label=label);}
+function matchingScalingCurves(items,filters){
+  return items.map((curve,index)=>({curve,index})).filter(({curve})=>(!filters.profile||curve.profile===filters.profile)&&(!filters.runtime||curve.runtime===filters.runtime)&&(!filters.metric||curve.measurement.metric===filters.metric));
+}
+function selectScalingCurves(){
+  const select=el('scaling-choice'),previous=select.value;
+  const matching=matchingScalingCurves(curves,{profile:el('scaling-profile').value,runtime:el('scaling-runtime').value,metric:el('scaling-metric').value});
+  select.replaceChildren();
+  for(const {curve:c,index}of matching){const o=node('option',c.generator+' / '+c.dimension+' / '+c.runtime+' / '+c.scenario+' / '+c.measurement.metric+' / '+c.measurement.phase+' / '+c.measurement.quality);o.value=index;select.append(o);}
+  if(matching.some(item=>String(item.index)===previous))select.value=previous;
+  select.disabled=!matching.length;
+  const available=matching.filter(({curve})=>curve.points.some(p=>Number.isFinite(p.median))).length;
+  el('scaling-coverage').textContent=matching.length+' / '+curves.length+' curves · '+available+' with numeric observations; unavailable curves remain selectable.';
+  el('scaling-evidence').replaceChildren();drawScaling();drawMarginal();
+}
+if(curves.length){
+  el('scaling').hidden=false;
+  for(const [id,values]of [['scaling-profile',curves.map(c=>c.profile)],['scaling-runtime',curves.map(c=>c.runtime)],['scaling-metric',curves.map(c=>c.measurement.metric)]]){
+    const all=node('option','All');all.value='';el(id).append(all);
+    for(const value of [...new Set(values)].sort()){const option=node('option',value);option.value=value;el(id).append(option);}
+    el(id).addEventListener('change',()=>{if(id==='scaling-profile')el('scaling-metric').value='';selectScalingCurves();});
+  }
+  el('scaling-profile').value=curves.some(c=>c.profile==='timing')?'timing':curves[0].profile;
+  el('scaling-metric').value=curves.some(c=>c.profile===el('scaling-profile').value&&c.measurement.metric==='time.wall')?'time.wall':curves.some(c=>c.measurement.metric==='host.alloc.bytes')?'host.alloc.bytes':'';
+  el('scaling-choice').addEventListener('change',()=>{el('scaling-evidence').replaceChildren();drawScaling();drawMarginal();});window.addEventListener('resize',drawMarginal);selectScalingCurves();
+}
+function drawScaling(){const c=curves[Number(el('scaling-choice').value)],root=el('scaling-chart');root.replaceChildren();if(el('scaling-choice').value===''||!c){root.append(node('p','No measurement curves match these filters. Missing capabilities and failed outcomes remain in the comparison and raw evidence.'));return;}root.append(node('p',c.measurement.unit+' per '+c.measurement.normalization_denominator+' · '+c.measurement.scope+' · '+c.measurement.collector+(c.batch_operations?' · '+c.batch_operations+' operations/batch':'')));const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 1000 180');svg.setAttribute('role','img');svg.setAttribute('aria-label',c.dimension+' scaling; logarithmic input size, linear measurement');const points=c.points,maximum=Math.max(1,...points.map(p=>p.ci95_high??p.median??0)),xmin=Math.log(Math.min(...points.map(p=>p.size))),xmax=Math.log(Math.max(...points.map(p=>p.size)));const x=p=>50+(Math.log(p.size)-xmin)/Math.max(1e-9,xmax-xmin)*900,y=v=>145-v/maximum*125;let previous=null;const shape=(tag,attrs)=>{const n=document.createElementNS(svg.namespaceURI,tag);for(const [k,v]of Object.entries(attrs))n.setAttribute(k,v);svg.append(n);return n;};for(const p of points){const label=shape('text',{x:x(p),y:170,fill:'#a5b2c7','text-anchor':'middle','font-size':12});label.textContent=p.size;if(p.median===null){previous=null;continue;}if(previous)shape('line',{x1:x(previous),y1:y(previous.median),x2:x(p),y2:y(p.median),stroke:'#70cbbb'});if(p.ci95_low!==null)shape('line',{x1:x(p),x2:x(p),y1:y(p.ci95_low),y2:y(p.ci95_high),stroke:'#edb85f','stroke-width':3});const dot=shape('circle',{cx:x(p),cy:y(p.median),r:4,fill:'#70cbbb'});dot.append(node('title',p.workload+': '+p.median+' '+c.measurement.unit));previous=p;}root.append(svg);root.append(node('p',c.diagnostic_log_log_slope===null?'Growth fit unavailable: '+c.fit_status:'Descriptive log–log slope: '+c.diagnostic_log_log_slope.toFixed(3)+' (not a complexity proof)'));const wrap=node('div');wrap.className='tablewrap';const table=node('table'),head=node('tr');for(const label of ['Input size / evidence','Median','95% interval','Launch coverage','Status'])head.append(node('th',label));table.append(head);for(const p of points){const row=node('tr'),name=node('td'),button=node('button',p.size+' / '+p.workload);button.onclick=()=>openScalingEvidence(c,p);name.append(button);row.append(name,node('td',p.median===null?'Unavailable':p.median.toPrecision(5)),node('td',p.ci95_low===null?'Insufficient launches':p.ci95_low.toPrecision(5)+' – '+p.ci95_high.toPrecision(5)),node('td',p.independent_launches+' / '+p.attempted_launches),node('td',p.status+' · '+JSON.stringify(p.outcomes)));table.append(row);}wrap.append(table);root.append(wrap);const details=node('details');details.append(node('summary','Exact measurement provenance'),node('pre',JSON.stringify(c.measurement,null,2)));root.append(details);}
+function openScalingEvidence(curve,point){
+  const root=el('scaling-evidence');root.replaceChildren();
+  const paired=curve.profile==='memory'&&!!data.memory_source;
+  const trials=paired?(data.memory_scaling_trials||[]):data.bundle.trials.filter(t=>t.block>=0);
+  root.append(node('h3',curve.runtime+' · '+point.workload+' · '+curve.profile));
+  root.append(node('p','Exact collector domain: '+curve.measurement.metric+' · '+curve.measurement.phase+' · '+curve.measurement.scope+' · '+curve.measurement.collector+'. Raw links retain unavailable and failed launches.'));
+  const list=node('ul');for(const t of trials.filter(t=>t.runtime===curve.runtime&&t.workload===point.workload&&t.scenario===curve.scenario)){
+    const item=node('li'),link=node('a',t.id+' · '+t.status);link.href=(paired?'raw-memory/':'raw/')+'trials/'+encodeURIComponent(t.id)+'.json';item.append(link);list.append(item);
+  }
+  if(list.children.length)root.append(list);else root.append(node('p','No matching raw launch was recorded.'));
+  if(!paired){const summary=data.summaries.find(s=>s.runtime===curve.runtime&&s.workload===point.workload&&s.scenario===curve.scenario);if(summary)detail(summary);}
+}
+function drawMarginal(){
+  const c=curves[Number(el('scaling-choice').value)],root=el('scaling-marginal');root.replaceChildren();
+  if(el('scaling-choice').value===''||!c)return;
+  const points=c.marginal_costs||[];if(!points.length)return;
+  root.append(node('h3','Marginal cost between declared sizes'),node('p','Paired within independent blocks: difference of launch medians divided by added '+c.dimension+'. Negative differences are retained. No extrapolation or bridging missing endpoints; snapshot differences are not allocation volume.'));
+  root.append(node('p',c.measurement.unit+' per '+c.measurement.normalization_denominator+' per added '+c.dimension+' · '+data.scaling_analysis_version));
+  const valid=points.filter(p=>p.median_per_added_unit!==null);
+  if(valid.length){
+    const width=Math.max(320,root.clientWidth),svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 '+width+' 220');svg.style.height='220px';svg.setAttribute('role','img');svg.setAttribute('aria-label','Marginal cost per added input unit; signed linear axis, adjacent input intervals');
+    const values=valid.flatMap(p=>[p.median_per_added_unit,p.ci95_low??p.median_per_added_unit,p.ci95_high??p.median_per_added_unit]);let lo=Math.min(0,...values),hi=Math.max(0,...values);if(lo===hi){lo=-1;hi=1;}
+    const x=i=>85+(i+.5)*(width-110)/points.length,y=v=>170-(v-lo)/(hi-lo)*145;
+    const shape=(tag,attrs)=>{const n=document.createElementNS(svg.namespaceURI,tag);for(const [k,v]of Object.entries(attrs))n.setAttribute(k,v);svg.append(n);return n;};
+    for(const value of [...new Set([lo,0,hi])]){shape('line',{x1:85,x2:width-25,y1:y(value),y2:y(value),stroke:value===0?'#92c7ff':'#354055'});shape('text',{x:78,y:y(value)+4,fill:'#a5b2c7','text-anchor':'end','font-size':11}).textContent=value.toPrecision(3);}
+    points.forEach((p,i)=>{shape('text',{x:x(i),y:202,fill:'#a5b2c7','text-anchor':'middle','font-size':12}).textContent=p.from_size+'–'+p.to_size;if(p.median_per_added_unit===null)return;if(p.ci95_low!==null)shape('line',{x1:x(i),x2:x(i),y1:y(p.ci95_low),y2:y(p.ci95_high),stroke:'#edb85f','stroke-width':3});const dot=shape('circle',{cx:x(i),cy:y(p.median_per_added_unit),r:4,fill:'#70cbbb'}),title=document.createElementNS(svg.namespaceURI,'title');title.textContent=p.from_workload+' → '+p.to_workload+': '+p.median_per_added_unit+'; '+p.paired_blocks+' paired blocks';dot.append(title);});root.append(svg);
+  }else root.append(node('p','Marginal cost unavailable: no eligible paired differences.'));
+  const wrap=node('div');wrap.className='tablewrap';const table=node('table'),head=node('tr');['Input interval','Median per added unit','95% interval','Paired blocks','Status'].forEach(s=>head.append(node('th',s)));table.append(head);
+  for(const p of points){const row=node('tr');row.append(node('td',p.from_size+' → '+p.to_size),node('td',p.median_per_added_unit===null?'Unavailable':p.median_per_added_unit.toPrecision(5)),node('td',p.ci95_low===null?'Unavailable':p.ci95_low.toPrecision(5)+' – '+p.ci95_high.toPrecision(5)),node('td',p.paired_blocks),node('td',p.status));table.append(row);}wrap.append(table);root.append(wrap);
+}
+const memoryTimelines=[...(data.memory_timelines||[]).map(t=>({...t,evidence_source:'raw'})),...(data.paired_memory_timelines||[]).map(t=>({...t,evidence_source:'raw-memory'}))];
+function memoryTimelineTrialKey(t){return JSON.stringify([t.evidence_source,t.trial]);}
+function memoryTimelineRawLink(t){return t.evidence_source+'/trials/'+encodeURIComponent(t.trial)+'.json';}
+if(data.memory_evidence_version)el('memory-exports').hidden=false;
+const cpuStacks=data.cpu_stacks||[];let cpuStackIndex=0,cpuStackZoom=0,cpuStackNodes=new Map(),cpuStackChildren=new Map();
+if(cpuStacks.length){
+  el('cpu-stack-view').hidden=false;
+  cpuStacks.forEach((p,i)=>{const o=node('option',p.runtime+' / '+p.workload+' / '+p.trial+' / '+p.trial_status+' / '+p.status);o.value=i;el('cpu-stack-trial').append(o);});
+  el('cpu-stack-trial').addEventListener('change',selectCPUStack);el('cpu-stack-page').addEventListener('change',drawCPUStackTable);el('cpu-stack-reset').addEventListener('click',()=>{cpuStackZoom=0;drawCPUStackChart();});selectCPUStack();
+}
+function stackWeight(n){return n.total_weight??n.total_ns;}
+function stackSelf(n){return n.self_weight??n.self_ns;}
+function stackUnit(p){return p.weight_unit==='isolate_samples'?'isolate samples':'sampled CPU ns';}
+function selectCPUStack(){
+  cpuStackIndex=Number(el('cpu-stack-trial').value);cpuStackZoom=0;const p=cpuStacks[cpuStackIndex];cpuStackNodes=new Map(p.nodes.map(n=>[n.id,n]));cpuStackChildren=new Map();
+  for(const n of p.nodes){if(!cpuStackChildren.has(n.parent))cpuStackChildren.set(n.parent,[]);cpuStackChildren.get(n.parent).push(n);}
+  el('cpu-stack-context').textContent=p.status+(p.reason?' · '+p.reason:'')+' · trial '+p.trial_status+(['available','empty'].includes(p.status)?' · '+p.sample_records+' raw sample records · '+(p.total_weight??p.total_ns??'Unavailable')+' '+stackUnit(p):' · Stack weights not analyzed')+' · '+p.version+' · '+p.decoder;
+  const raw=node('a','Raw trial');raw.href='raw/trials/'+encodeURIComponent(p.trial)+'.json';el('cpu-stack-context').append(document.createTextNode(' · '),raw);if(p.profile_sha256){const a=node('a','Raw profile'),ext=p.profile_extension||'.pprof';a.href='profiles/'+p.profile_sha256+ext;a.download=p.profile_sha256+ext;el('cpu-stack-context').append(document.createTextNode(' · '),a);}
+  el('cpu-stack-page').replaceChildren();for(let i=0;i<p.nodes.length;i+=500){const o=node('option','Frames '+(i+1)+'–'+Math.min(i+500,p.nodes.length)+' of '+p.nodes.length);o.value=i;el('cpu-stack-page').append(o);}drawCPUStackChart();drawCPUStackTable();
+}
+function zoomCPUStack(id){cpuStackZoom=id;drawCPUStackChart();el('cpu-stack-chart').scrollTop=0;}
+function drawCPUStackChart(){
+  const root=el('cpu-stack-chart');root.replaceChildren();const p=cpuStacks[cpuStackIndex],selected=cpuStackNodes.get(cpuStackZoom);el('cpu-stack-reset').disabled=cpuStackZoom===0;
+  if(!['available','empty'].includes(p.status)){el('cpu-stack-limit').textContent='No compatible analyzed stack tree: '+p.status+'. Raw evidence remains available above.';return;}
+  if(!selected||BigInt(stackWeight(selected))===0n){el('cpu-stack-limit').textContent='No positive recorded stack weight to draw. This does not establish zero CPU work.';return;}
+  const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg'),total=BigInt(stackWeight(selected)),pending=[[selected,0n,0]];let drawn=0,maxDepth=0;
+  svg.setAttribute('role','img');svg.setAttribute('aria-label','Sampled CPU stack flamegraph; select a frame to zoom');
+  while(pending.length&&drawn<2000){
+    const [n,offset,depth]=pending.pop(),weight=BigInt(stackWeight(n));drawn++;maxDepth=Math.max(maxDepth,depth);
+    const x=Number(offset*1000000n/total)/1000,width=Number(weight*1000000n/total)/1000,g=document.createElementNS(ns,'g'),rect=document.createElementNS(ns,'rect'),title=document.createElementNS(ns,'title');
+    const description=n.name+' · inclusive '+stackWeight(n)+' '+stackUnit(p)+' · self '+stackSelf(n)+' '+stackUnit(p)+(n.file?' · '+n.file+':'+n.line:'')+(n.address?' · '+n.address:'');title.textContent=description;g.append(title);g.setAttribute('role','button');g.setAttribute('tabindex','0');g.setAttribute('aria-label',description);g.addEventListener('click',()=>zoomCPUStack(n.id));g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();zoomCPUStack(n.id);}});
+    rect.setAttribute('x',x);rect.setAttribute('y',depth*24);rect.setAttribute('width',width);rect.setAttribute('height',22);rect.setAttribute('fill','hsl('+(25+depth*17)%65+' 70% 65%)');g.append(rect);
+    if(width>18){const label=document.createElementNS(ns,'text');label.setAttribute('x',x+3);label.setAttribute('y',depth*24+16);label.setAttribute('fill','#17202b');label.setAttribute('font-size','12');label.textContent=n.name.slice(0,Math.max(0,Math.floor((width-6)/8)));g.append(label);}
+    svg.append(g);let childOffset=offset;const next=[];for(const child of cpuStackChildren.get(n.id)||[]){next.push([child,childOffset,depth+1]);childOffset+=BigInt(stackWeight(child));}for(let i=next.length-1;i>=0;i--)pending.push(next[i]);
+  }
+  svg.setAttribute('viewBox','0 0 1000 '+((maxDepth+1)*24));root.append(svg);el('cpu-stack-limit').textContent='Zoom: '+selected.name+' · '+drawn+' frames drawn.'+(pending.length?' Chart capped at 2,000 frames; zoom from the exact table to inspect omitted branches.':'')+' Tiny/zero-width frames remain in the exact table. This is a call tree, not a timeline.';
+}
+function drawCPUStackTable(){
+  const root=el('cpu-stack-table');root.replaceChildren();const p=cpuStacks[cpuStackIndex],first=Number(el('cpu-stack-page').value),wrap=node('div'),table=node('table'),head=node('tr');wrap.className='tablewrap';['Frame / parent','Symbol / source','Inclusive '+stackUnit(p),'Self '+stackUnit(p),'Explore'].forEach(v=>head.append(node('th',v)));table.append(head);
+  for(const n of p.nodes.slice(first,first+500)){const row=node('tr'),td=node('td'),button=node('button','Zoom');button.type='button';button.addEventListener('click',()=>zoomCPUStack(n.id));td.append(button);row.append(node('td',n.id+' / '+n.parent),node('td',n.name+(n.file?' · '+n.file+':'+n.line:'')+(n.address?' · '+n.address:'')),node('td',stackWeight(n)),node('td',stackSelf(n)),td);table.append(row);}wrap.append(table);root.append(wrap);
+}
+if(bundle.trials.some(t=>(t.samples||[]).some(s=>s.tier_window))){el('tier-view').hidden=false;tierTrajectory(el('tier-evidence'),bundle.trials);}
+if(bundle.trials.some(t=>t.scenario==='code-lifetime'&&t.block>=0)){el('code-lifetime-view').hidden=false;codeLifetimeEvidence(el('code-lifetime-evidence'),bundle.trials);}
+if(bundle.trials.some(t=>t.engine_trace||t.profile==='profiling')){el('engine-trace-view').hidden=false;engineTraceEvidence(el('engine-trace-evidence'),bundle.trials);}
+for(const t of data.bundle.trials.filter(t=>t.profile==='profiling'&&!t.samples?.some(s=>s.tier_window))){
+  el('cpu-profiles').hidden=false;const p=t.cpu_profile,entry=node('p',t.runtime_configuration+' / '+t.workload+' / '+t.scenario+' / '+(t.block<0?'admission':'block '+t.block)+' / workload '+t.status+' / profile '+(p?p.status:'not recorded')+(p?.reason?' · '+p.reason:'')+(t.reason?' · '+t.reason:''));
+  if(p?.status==='collected'){const ext=p.format==='v8-cpuprofile-json'?'.cpuprofile':'.pprof',a=node('a','Download '+p.format+' · '+p.scope);a.href='profiles/'+p.sha256+ext;a.download=p.sha256+ext;entry.append(document.createTextNode(' · '),a);}
+  const raw=node('a','Raw trial');raw.href='raw/trials/'+encodeURIComponent(t.id)+'.json';entry.append(document.createTextNode(' · '),raw);el('cpu-profile-list').append(entry);
+}
+const counterDisplay=data.counter_display||[];
+if(counterDisplay.length){
+  el('counter-evidence').hidden=false;const trials=new Map(counterDisplay.map(r=>[r.Trial,r]));
+  for(const [id,r]of trials){const o=node('option',r.Runtime+' / '+r.Workload+' / '+r.Scenario+' / '+(r.Block<0?'admission':'block '+r.Block)+' / '+r.TrialStatus+' / '+id);o.value=id;el('counter-trial').append(o);}
+  el('counter-trial').addEventListener('change',selectCounterTrial);el('counter-window').addEventListener('change',drawCounterEvidence);selectCounterTrial();
+}
+function selectCounterTrial(){const rows=counterDisplay.filter(r=>r.Trial===el('counter-trial').value);el('counter-window').replaceChildren();for(let i=0;i<rows.length;i+=500){const o=node('option','Rows '+(i+1)+'–'+Math.min(i+500,rows.length)+' of '+rows.length);o.value=i;el('counter-window').append(o);}drawCounterEvidence();}
+function drawCounterEvidence(){
+  const rows=counterDisplay.filter(r=>r.Trial===el('counter-trial').value),root=el('counter-table');root.replaceChildren();if(!rows.length)return;
+  const trial=rows[0],first=Number(el('counter-window').value);root.append(node('p','Workload outcome: '+trial.TrialStatus+(trial.TrialReason?' · '+trial.TrialReason:'')));
+  const raw=node('a','Raw trial evidence');raw.href='raw/trials/'+encodeURIComponent(trial.Trial)+'.json';root.append(raw);
+  const wrap=node('div'),table=node('table'),head=node('tr');wrap.className='tablewrap';['Sample / CPU','Event / definition','Raw count','Enabled / running ns','Window / event status','Verification / reason','Provenance'].forEach(s=>head.append(node('th',s)));table.append(head);
+  const exact=v=>v===null||v===undefined?'Unavailable':v;
+  for(const r of rows.slice(first,first+500)){
+    const tr=node('tr'),status=[r.WindowStatus,r.ReadingStatus].filter(Boolean).join(' / ')||'No counter window recorded',reason=[r.WindowReason,r.ReadingReason,r.SampleWarmup===true?'Warmup batch':r.SampleWarmup===false?'Measured sample':'Warmup status unavailable',r.SampleOperations==null?'Operation count unavailable':r.SampleOperations+' operation(s)'].filter(Boolean).join(' · ');
+    tr.append(node('td',(r.SampleIndex===null?'No sample':r.SampleIndex)+' / '+(r.CPU===null?'No CPU record':r.CPU)),node('td',r.RowKind==='reading'?r.Event+' (type '+r.EventType+', config '+exact(r.EventConfig)+')':r.RowKind),node('td',exact(r.RawCount)),node('td',exact(r.EnabledNS)+' / '+exact(r.RunningNS)),node('td',status),node('td',(r.SampleVerified===null?'Verification not recorded':r.SampleVerified?'Sample verified':'Sample unverified')+(reason?' · '+reason:'')));
+    const td=node('td'),details=node('details');details.append(node('summary','Definition and context'),node('pre',JSON.stringify(r,null,2)));td.append(details);tr.append(td);table.append(tr);
+  }
+  wrap.append(table);root.append(node('p','All statuses retained. Scroll the table horizontally on narrow screens. Use the window selector for every row; no downsampling.'),wrap,node('p',data.counter_display_version));
+}
+if(memoryTimelines.length){
+  el('memory-timeline').hidden=false;
+  const trials=new Map(memoryTimelines.map(t=>[memoryTimelineTrialKey(t),t]));
+  for(const [id,t]of trials){const option=node('option',(t.evidence_source==='raw-memory'?'Paired memory run':'Primary run')+' / '+t.runtime+' / '+t.workload+' / '+t.scenario+' / block '+t.block+' / '+t.trial);option.value=id;el('memory-trial').append(option);}
+  el('memory-trial').addEventListener('change',selectMemoryTrial);el('memory-measurement').addEventListener('change',selectMemoryMeasurement);el('memory-window').addEventListener('change',drawMemoryTimeline);window.addEventListener('resize',drawMemoryTimeline);selectMemoryTrial();
+}
+function selectMemoryTrial(){
+  el('memory-measurement').replaceChildren();
+  memoryTimelines.forEach((t,i)=>{if(memoryTimelineTrialKey(t)!==el('memory-trial').value)return;const m=t.measurement,o=node('option',m.metric+' / '+m.phase+' / '+m.scope+' / '+m.collector+' / '+m.quality);o.value=i;el('memory-measurement').append(o);});selectMemoryMeasurement();
+}
+function selectMemoryMeasurement(){
+  const t=memoryTimelines[Number(el('memory-measurement').value)];el('memory-window').replaceChildren();
+  for(let i=0;i<t.points.length;i+=500){const o=node('option','Positions '+(i+1)+'–'+Math.min(i+500,t.points.length)+' of '+t.points.length);o.value=i;el('memory-window').append(o);}drawMemoryTimeline();
+}
+function densityPointTrials(curve,point){
+  return data.bundle.trials.filter(t=>t.block>=0&&t.runtime_configuration===curve.runtime&&t.workload===point.workload&&t.scenario===curve.scenario&&t.profile===curve.profile);
+}
+function openDensityPoint(curve,point){
+  const processDetail=el('snapshot-density-process-detail');if(processDetail){processDetail.replaceChildren();processDetail.hidden=true;}
+  const root=el('snapshot-density-detail');root.replaceChildren();root.append(node('h3',curve.runtime+' · '+curve.measurement.phase+' · '+point.size+' restored instances'));
+  root.append(node('p',point.independent_launches+' usable / '+point.attempted_launches+' attempted independent launches · '+point.status));
+  root.append(node('p','Outcomes: '+JSON.stringify(point.outcomes)));
+  root.append(node('p','Raw launches retain every group, process birth identity, collector bracket, procfs reading, state proof and diagnostic clock. These clocks are not headline timing.'));
+  for(const trial of densityPointTrials(curve,point)){const link=node('a',trial.id+' · '+trial.status);link.href='raw/trials/'+encodeURIComponent(trial.id)+'.json';const p=node('p');p.append(link);const view=(data.snapshot_density_views||[]).find(v=>v.trial===trial.id&&v.runtime===curve.runtime&&v.workload===point.workload);if(view){const button=node('button',' · Inspect processes');button.type='button';button.addEventListener('click',()=>openDensityFootprints(view));p.append(button);}root.append(p);}
+}
+function openDensityFootprints(view){
+  const root=el('snapshot-density-process-detail');root.replaceChildren();root.hidden=false;
+  root.append(node('h3',view.runtime+' · '+view.trial+' · process footprints'));
+  const raw=node('a','Raw trial with full state proof and procfs readings');raw.href=view.raw_trial;root.append(raw);
+  root.append(node('p','Individual boundary snapshots, not peaks or additive RSS. Birth identities and collector brackets are exact decimal strings. Source/template/children are held live, but procfs reads are sequential and non-atomic.'));
+  if(view.status!=='ok'||!view.rows?.length){root.append(node('p',view.status+' · '+(view.reason||'No complete validated process group')+' · '+view.retained_boundaries+' retained boundaries. Failed prefixes are raw diagnostics only.'));return;}
+  const controls=node('div');controls.className='controls';
+  const select=(name,values)=>{const label=node('label',name),input=node('select');input.setAttribute('aria-label',name);input.style.maxWidth='100%';for(const [value,text]of values){const option=node('option',text);option.value=value;input.append(option);}label.append(input);controls.append(label);return input;};
+  const groups=[...new Set(view.rows.map(r=>r.group_index))].sort((a,b)=>a-b);
+  const group=select('Density sample group',groups.map(i=>[i,'Group '+i]));group.value=groups[0];
+  const stage=select('Density boundary stage',[['idle','Idle restored group'],['touched','After declared writes'],['executed','After execution'],['template_after_source_release','Template after source release']]);stage.value='idle';
+  const role=select('Density process role',[['','All roles'],['source','Source'],['template','Template'],['restored','Restored children']]);role.value='';
+  root.append(controls);const tableRoot=node('div'),detail=node('div');tableRoot.className='tablewrap';detail.style.overflowWrap='anywhere';root.append(tableRoot,detail);
+  const draw=()=>{tableRoot.replaceChildren();detail.replaceChildren();const rows=view.rows.filter(r=>r.group_index===Number(group.value)&&r.stage===stage.value&&(!role.value||r.role===role.value));
+    const table=node('table'),head=node('tr');for(const title of ['Role / child','PID / birth ticks','RSS','PSS','Private','Virtual','Smaps / evidence'])head.append(node('th',title));table.append(head);
+    for(const row of rows){const tr=node('tr'),button=node('button',row.smaps_status),cell=node('td');button.type='button';button.addEventListener('click',()=>{detail.replaceChildren();detail.append(node('h4',row.role+(row.child_index===null?'':' child '+row.child_index)+' · '+row.process.pid+' / '+row.process.start_time_ticks));detail.append(node('p','Raw: snapshot_density.groups['+row.group_index+'].records['+row.raw_record_index+'].readings['+row.raw_reading_index+']'));detail.append(node('p','Collector bracket: '+row.start_ns+' → '+row.end_ns+' ns (controller-local); parent PID '+row.parent_pid));if(row.smaps_reason)detail.append(node('p',row.smaps_reason));const pre=node('pre',JSON.stringify(row,null,2));detail.append(pre);});cell.append(button);tr.append(node('td',row.role+(row.child_index===null?'':' #'+row.child_index)),node('td',row.process.pid+' / '+row.process.start_time_ticks),node('td',snapshotFootprintBytes(row.rss_bytes)),node('td',snapshotFootprintBytes(row.pss_bytes)),node('td',snapshotFootprintBytes(row.private_bytes)),node('td',snapshotFootprintBytes(row.virtual_bytes)),cell);table.append(tr);}tableRoot.append(table);if(!rows.length)tableRoot.append(node('p','No recorded processes for this selection. Missing is not zero.'));
+  };
+  for(const input of [group,stage,role])input.addEventListener('change',draw);draw();
+}
+function drawSnapshotDensity(){
+  const root=el('snapshot-density-chart');root.replaceChildren();el('snapshot-density-detail').replaceChildren();
+  const processDetail=el('snapshot-density-process-detail');if(processDetail){processDetail.replaceChildren();processDetail.hidden=true;}
+  const curve=(data.snapshot_density_curves||[])[Number(el('snapshot-density-choice').value)];if(!curve)return;
+  const diagnostic=curve.measurement.unit==='ns',format=value=>(value<0?'−':'')+(diagnostic?fmt(Math.abs(value)):fmtBytes(Math.abs(value)));
+  if(diagnostic)root.append(node('p','Diagnostic memory-pass clocks, not headline latency. '+(curve.measurement.normalization_denominator==='restored_child'?'Each group averages child-local regions; these clocks are not summed group wall time.':'Provisioning: source restore request → all live ready identity frames.')));
+  const measured=p=>Number.isFinite(p.median)&&p.median>=0;
+  const maximum=Math.max(0,...curve.points.filter(measured).map(p=>p.ci95_high??p.median));
+  const maxSize=Math.max(1,...curve.points.map(p=>p.size));
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 1000 300');svg.setAttribute('role','img');svg.setAttribute('aria-label',(diagnostic?'Diagnostic ':'Non-atomic ')+curve.measurement.metric+' by restored instance count');svg.style.minWidth='500px';svg.style.width='100%';
+  const make=(tag,attrs)=>{const n=document.createElementNS(svg.namespaceURI,tag);for(const[k,v]of Object.entries(attrs))n.setAttribute(k,String(v));return n;};
+  const x=p=>90+850*p.size/maxSize,y=v=>250-(maximum?200*v/maximum:0);
+  svg.append(make('path',{d:'M90 45 V250 H955',fill:'none',stroke:'#91a3ad'}));
+  for(const [v,label]of [[0,'0'],[maximum,format(maximum)]]){const text=make('text',{x:5,y:y(v),fill:'#c9d6dc','font-size':13});text.textContent=label;svg.append(text);}
+  let prior=null;
+  for(const point of curve.points){
+    const label=make('text',{x:x(point),y:280,fill:'#c9d6dc','font-size':13,'text-anchor':'middle'});label.textContent=point.size;svg.append(label);
+    if(!measured(point)){prior=null;continue;}
+    if(prior)svg.append(make('line',{x1:x(prior),y1:y(prior.median),x2:x(point),y2:y(point.median),stroke:'#65c7b4','stroke-width':2}));
+    if(Number.isFinite(point.ci95_low)&&Number.isFinite(point.ci95_high))svg.append(make('line',{x1:x(point),x2:x(point),y1:y(point.ci95_low),y2:y(point.ci95_high),stroke:'#c9eee6','stroke-width':3}));
+    const dot=make('circle',{cx:x(point),cy:y(point.median),r:7,fill:'#65c7b4',tabindex:0,role:'button','aria-label':point.size+' instances · '+format(point.median)+' · open raw launches'}),title=make('title',{});title.textContent=point.size+' instances\n'+format(point.median)+'\n'+point.independent_launches+' launches';dot.append(title);dot.addEventListener('click',()=>openDensityPoint(curve,point));dot.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openDensityPoint(curve,point);}});svg.append(dot);prior=point;
+  }
+  root.append(svg);
+  const table=node('table'),head=node('tr');for(const title of ['Restored instances',diagnostic?'Diagnostic region median':'Group footprint median','95% interval','Usable / attempted launches','Evidence'])head.append(node('th',title));table.append(head);
+  for(const point of curve.points){const row=node('tr'),button=node('button',point.status);button.type='button';button.addEventListener('click',()=>openDensityPoint(curve,point));const evidence=node('td');evidence.append(button);row.append(node('td',point.size),node('td',measured(point)?format(point.median):'Unavailable'),node('td',Number.isFinite(point.ci95_low)&&Number.isFinite(point.ci95_high)?format(point.ci95_low)+' – '+format(point.ci95_high):'Unavailable: insufficient launches or coverage'),node('td',point.independent_launches+' / '+point.attempted_launches),evidence);table.append(row);}root.append(table);
+  root.append(node('h3',diagnostic?'Adjacent-count diagnostic finite differences':'Marginal accounted bytes per additional restored instance'));
+  if(diagnostic)root.append(node('p','Change in the declared group provisioning time or child-region mean, divided by added instances. Not the total time of additional children.'));
+  const marginal=node('table'),heading=node('tr');for(const title of ['Adjacent counts',diagnostic?'Region change / added instance':'Median bytes / added instance','95% interval','Paired blocks','Status'])heading.append(node('th',title));marginal.append(heading);
+  for(const m of curve.marginal_costs){const row=node('tr');row.append(node('td',m.from_size+' → '+m.to_size),node('td',Number.isFinite(m.median_per_added_unit)?format(m.median_per_added_unit):'Unavailable'),node('td',Number.isFinite(m.ci95_low)&&Number.isFinite(m.ci95_high)?format(m.ci95_low)+' – '+format(m.ci95_high):'Unavailable: insufficient blocks or coverage'),node('td',m.paired_blocks),node('td',m.status));marginal.append(row);}root.append(marginal);
+}
+if((data.snapshot_density_curves||[]).length){el('snapshot-density-view').hidden=false;const processDetail=node('div');processDetail.id='snapshot-density-process-detail';processDetail.hidden=true;el('snapshot-density-view').append(processDetail);data.snapshot_density_curves.forEach((c,i)=>{const option=node('option',c.runtime+' · '+c.measurement.phase+' · '+c.measurement.metric);option.value=i;el('snapshot-density-choice').append(option);});el('snapshot-density-choice').addEventListener('change',drawSnapshotDensity);drawSnapshotDensity();}
+function snapshotFootprintBytes(value){
+  if(value===null||value===undefined)return 'Unavailable';
+  const n=BigInt(value);return n>BigInt(Number.MAX_SAFE_INTEGER)?n.toString()+' B':fmtBytes(Number(n));
+}
+function snapshotBoundaryLabel(row){
+  const label={template_after_source_release:'After source release',restore_ready:'Restore ready',first_write_done:'After first write',execution_done:'After execution'}[row.stage]||row.stage;
+  return label+(row.restoration<0?'':' · restoration '+(row.restoration+1));
+}
+function openSnapshotFootprint(view,row){
+  const root=el('snapshot-process-detail');root.hidden=false;root.replaceChildren();
+  const link=node('a','Download raw trial JSON');link.href=view.raw_trial;
+  root.append(node('h3',row.role+' · PID '+row.process.pid+' · '+snapshotBoundaryLabel(row)),link,
+    node('p','Raw location: snapshot_memory.records['+row.raw_record_index+'].readings['+row.raw_reading_index+']. Collector brackets use the controller-local diagnostic clock, not the adapter timing clock.'),node('pre',JSON.stringify(row,null,2)));
+}
+function drawSnapshotFootprints(){
+  const root=el('snapshot-process-chart'),detail=el('snapshot-process-detail');root.replaceChildren();detail.replaceChildren();detail.hidden=true;
+  const view=snapshotProcessViews[Number(el('snapshot-process-trial').value)];if(!view)return;
+  const raw=node('a','Download raw trial JSON');raw.href=view.raw_trial;
+  root.append(node('p',view.run+' · '+view.runtime+' · '+view.scenario+' · '+view.status),raw);
+  if(view.status!=='ok'||!view.rows?.length){root.append(node('p',(view.reason||'No completed validated memory evidence')+'. '+view.retained_boundaries+' retained diagnostic boundaries; see raw evidence. Missing is not zero.'));return;}
+  const sample=Number(el('snapshot-process-sample').value),metric=el('snapshot-process-metric').value,role=el('snapshot-process-role').value;
+  const metricLabel={rss_bytes:'RSS',pss_bytes:'PSS',private_bytes:'Private resident',virtual_bytes:'Virtual address space'}[metric];
+  const all=view.rows.filter(row=>row.sample_index===sample),rows=all.filter(row=>!role||row.role===role);
+  const maximum=all.reduce((n,row)=>row[metric]===null?n:BigInt(row[metric])>n?BigInt(row[metric]):n,0n);
+  root.append(node('p','Sample '+(sample+1)+' · '+rows.length+' separate process readings. Shared '+metricLabel+' scale for all roles in this sample. Hover or focus for footprint; click for process identity, exact collector brackets and raw evidence.'));
+  if(!rows.length){root.append(node('p','No process readings for this selection. Missing is not zero.'));return;}
+  const bars=node('ul');bars.className='runtime-bars';
+  for(const row of rows){
+    const li=node('li'),button=node('button'),label=row.role+' · PID '+row.process.pid+' · '+snapshotBoundaryLabel(row),value=row[metric];
+    li.className='runtime-bar snapshot-'+row.role;button.className='runtime-bar-button';button.type='button';
+    if(value!==null){const fill=node('span');fill.className='runtime-bar-fill';fill.style.width=(maximum===0n?0:Number(BigInt(value)*10000n/maximum)/100)+'%';button.append(fill);}
+    const missing=value===null?row.smaps_status.replaceAll('_',' '):snapshotFootprintBytes(value);
+    button.append(node('span',label),node('span',missing));button.title=row.role+' · PID '+row.process.pid+'\n'+metricLabel+': '+missing+(value===null&&row.smaps_reason?'\n'+row.smaps_reason:'');button.setAttribute('aria-label',label+' · '+metricLabel+' '+missing+' · open evidence');
+    button.addEventListener('click',()=>openSnapshotFootprint(view,row));li.append(button);bars.append(li);
+  }root.append(bars);
+  const table=node('table'),head=node('tr'),wrap=node('div');wrap.className='tablewrap';wrap.tabIndex=0;wrap.setAttribute('role','region');wrap.setAttribute('aria-label','All snapshot footprint metrics for the selected sample; scroll horizontally');
+  for(const text of ['Boundary','Process / exact birth ticks','RSS','PSS','Private resident','Virtual address space'])head.append(node('th',text));table.append(head);
+  for(const row of rows){const tr=node('tr'),process=node('td'),button=node('button',row.role+' · '+row.process.pid+' / '+row.process.start_time_ticks);button.type='button';button.addEventListener('click',()=>openSnapshotFootprint(view,row));process.append(button);tr.append(node('td',snapshotBoundaryLabel(row)),process);
+    for(const key of ['rss_bytes','pss_bytes','private_bytes','virtual_bytes']){const cell=node('td',row[key]===null?row.smaps_status.replaceAll('_',' '):snapshotFootprintBytes(row[key]));cell.title=row[key]===null?row.smaps_reason:row[key]+' bytes · boundary snapshot only';tr.append(cell);}table.append(tr);
+  }wrap.append(table);root.append(wrap);
+}
+function resetSnapshotFootprintSample(){
+  const select=el('snapshot-process-sample'),view=snapshotProcessViews[Number(el('snapshot-process-trial').value)];select.replaceChildren();
+  const samples=[...new Set((view?.status==='ok'?view.rows||[]:[]).map(row=>row.sample_index))];
+  for(const index of samples){const option=node('option','Sample '+(index+1));option.value=index;select.append(option);}select.disabled=!samples.length;
+  drawSnapshotFootprints();
+}
+const snapshotProcessViews=data.snapshot_memory_views||[];
+if(snapshotProcessViews.length){
+  el('snapshot-process-view').hidden=false;
+  snapshotProcessViews.forEach((view,index)=>{const option=node('option',view.run+' / '+view.runtime+' / '+view.trial+' · '+view.status);option.value=index;el('snapshot-process-trial').append(option);});
+  el('snapshot-process-trial').addEventListener('change',resetSnapshotFootprintSample);
+  for(const id of ['snapshot-process-sample','snapshot-process-role','snapshot-process-metric'])el(id).addEventListener('change',drawSnapshotFootprints);
+  resetSnapshotFootprintSample();
+}
+function selectRustAllocatorTrials(trials,runtimes){return trials.filter(t=>t.block>=0&&runtimes.some(r=>r.id===t.runtime_configuration&&r.description?.capabilities?.requires_memory_profile));}
+const rustAllocatorTrials=selectRustAllocatorTrials(bundle.trials,manifest.lock.runtime_configurations);
+function drawRustAllocator(){
+  const root=el('rust-allocator-chart'),trial=rustAllocatorTrials[Number(el('rust-allocator-trial').value)];root.replaceChildren();if(!trial)return;
+  root.append(node('p',trial.status+(trial.reason?' · '+trial.reason:'')));
+  const raw=node('a','Raw allocator trial');raw.href='raw/trials/'+encodeURIComponent(trial.id)+'.json';root.append(raw);
+  const first=Number(el('rust-allocator-window').value)||0,samples=(trial.samples||[]).slice(first,first+250);
+  if(!samples.length){root.append(node('p','No accepted allocator samples. Missing is not zero.'));return;}
+  const fields=[['host.rust.alloc.bytes','Requested bytes'],['host.rust.alloc.count','Successful requests'],['host.rust.freed.bytes','Logical freed bytes'],['host.rust.outstanding.start','Outstanding at entry'],['host.rust.outstanding.end','Outstanding at return'],['host.rust.outstanding.observed_peak','Observed high-water']];
+  const wrap=node('div'),table=node('table'),head=node('tr');wrap.className='tablewrap';head.append(node('th','Sample'));fields.forEach(([,label])=>head.append(node('th',label)));table.append(head);
+  for(const sample of samples){const row=node('tr');row.append(node('td',String(sample.index+1)));for(const [metric] of fields){const o=(sample.observations||[]).find(o=>o.metric===metric&&o.status==='available');row.append(node('td',o&&Number.isFinite(o.value)?(o.unit==='count'?String(o.value):fmtBytes(o.value)):'Unavailable'));}table.append(row);}wrap.append(table);root.append(wrap);
+  if(samples.some(s=>(s.observations||[]).some(o=>o.metric.startsWith('host.rust.release.')))){
+    root.append(node('h3','After verification · logical resource release'),node('p','This is a separate diagnostic window. Verification can change the outstanding-byte baseline between API return and release entry. Logical frees and drop completion do not establish physical reclamation; no allocator purge is performed. Steady retains its instance until the final sample.'));
+    const configuration=manifest.lock.runtime_configurations.find(r=>r.id===trial.runtime_configuration);if(configuration?.description?.effective_configuration?.allocator_release_policy)root.append(node('p',configuration.description.effective_configuration.allocator_release_policy));
+    const releaseFields=[['outstanding.start','Before drop'],['outstanding.end','After drop'],['freed.bytes','Logical frees'],['alloc.bytes','New requests'],['alloc.count','Request count'],['outstanding.observed_peak','Observed high-water'],['elapsed','Diagnostic drop time']];
+    const rw=node('div'),rt=node('table'),rh=node('tr');rw.className='tablewrap';rh.append(node('th','Sample'));releaseFields.forEach(([,label])=>rh.append(node('th',label)));rt.append(rh);
+    for(const sample of samples){const row=node('tr');row.append(node('td',String(sample.index+1)));for(const [suffix] of releaseFields){const o=(sample.observations||[]).find(o=>o.metric==='host.rust.release.'+suffix);row.append(node('td',o?.status==='not_applicable'?'Retained':o?.status==='available'&&Number.isFinite(o.value)?(o.unit==='count'?String(o.value):o.unit==='ns'?fmt(o.value):fmtBytes(o.value)):'Not recorded'));}rt.append(row);}rw.append(rt);root.append(rw);
+  }
+  const records=(trial.phase_events||[]).filter(record=>record.event.sample_index>=first&&record.event.sample_index<first+250);
+  if(records.length){
+    root.append(node('h3','Process footprint · diagnostic boundaries'),node('p','RSS, PSS, private residency and virtual address space are boundary snapshots, not allocation volume or exact phase peaks. Barrier transport is outside Rust allocator windows but can affect process footprint. Verification separates API return from release entry. Steady retains its Store on non-final samples; logical drop does not prove physical reclamation.'));
+    const pw=node('div'),pt=node('table'),ph=node('tr');pw.className='tablewrap rust-process-boundaries';pw.tabIndex=0;pw.setAttribute('role','region');pw.setAttribute('aria-label','Process boundary snapshots; scroll horizontally for all memory metrics');for(const label of ['Sample','Boundary','RSS','PSS','Private resident','Virtual address space'])ph.append(node('th',label));pt.append(ph);
+    for(const record of records){const index=record.event.sample_index,stage=record.event.stage,sample=(trial.samples||[]).find(s=>s.index===index),release=(sample?.observations||[]).find(o=>o.metric==='host.rust.release.elapsed');
+      const label=stage.endsWith('release_entry')?'After verification / before drop':stage==='steady_release_decision_completed'?(release?.status==='not_applicable'?'Store retained':release?.status==='available'?'Store dropped':'Release decision not recorded'):stage.endsWith('release_completed')?'After logical drop':stage.startsWith('before_')?'Before API':'API returned';
+      const row=node('tr');row.append(node('td',String(index+1)),node('td',label));for(const metric of ['process.rss','process.pss','process.private','process.virtual']){const o=(record.observations||[]).find(o=>o.metric===metric),cell=node('td',o?.status==='available'&&Number.isFinite(o.value)?fmtBytes(o.value):o?o.status.replaceAll('_',' '):'Not recorded');cell.title=o?o.scope+' · '+o.quality+(o.reason?' · '+o.reason:''):'No snapshot evidence';row.append(cell);}pt.append(row);
+    }pw.append(pt);root.append(pw);
+  }
+}
+function resetRustAllocatorWindow(){
+  const trial=rustAllocatorTrials[Number(el('rust-allocator-trial').value)],select=el('rust-allocator-window');select.replaceChildren();for(let i=0;i<(trial.samples||[]).length;i+=250){const option=node('option','Samples '+(i+1)+'–'+Math.min(i+250,trial.samples.length));option.value=i;select.append(option);}drawRustAllocator();
+}
+if(rustAllocatorTrials.length){
+  const section=node('section'),trialSelect=node('select'),windowSelect=node('select'),chart=node('div');section.id='rust-allocator-view';trialSelect.id='rust-allocator-trial';windowSelect.id='rust-allocator-window';chart.id='rust-allocator-chart';
+  section.append(node('h2','Rust allocator activity · dedicated memory build'),node('p','Successful layout requests routed through Rust GlobalAlloc/System across all threads. Realloc counts a full new-size request and old-size logical release, even in place. Outstanding bytes and high-water are hook-accounting observations, not physical heap, RSS, retained live objects, or mmap-backed code/guest memory. Setup, verification and release are outside the operation window. Timers from this instrumented binary are diagnostic only; no purge or reclamation is inferred.'));
+  const trialLabel=node('label','Trial'),windowLabel=node('label','Sample window');trialLabel.append(trialSelect);windowLabel.append(windowSelect);section.append(trialLabel,windowLabel,chart);el('sustained-view').before(section);
+  rustAllocatorTrials.forEach((t,index)=>{const option=node('option',t.runtime_configuration+' / '+t.workload+' / '+t.scenario+' / '+t.id+' · '+t.status);option.value=index;trialSelect.append(option);});trialSelect.addEventListener('change',resetRustAllocatorWindow);windowSelect.addEventListener('change',drawRustAllocator);resetRustAllocatorWindow();
+}
+const sustainedSessions=data.sustained_sessions||[];
+if(sustainedSessions.length){
+  el('sustained-view').hidden=false;
+  sustainedSessions.forEach((s,index)=>{const option=node('option',s.runtime+' / '+s.workload+' / '+s.profile+' / '+s.trial+' · '+s.status);option.value=index;el('sustained-session').append(option);});
+  const resetSustainedWindow=()=>{const select=el('sustained-window'),s=sustainedSessions[Number(el('sustained-session').value)];select.replaceChildren();for(let i=0;i<s.points.length;i+=500){const option=node('option','Samples '+(i+1)+'–'+Math.min(i+500,s.points.length)+' of '+s.points.length);option.value=i;select.append(option);}drawSustained();};
+  el('sustained-session').addEventListener('change',resetSustainedWindow);el('sustained-metric').addEventListener('change',drawSustained);el('sustained-window').addEventListener('change',drawSustained);resetSustainedWindow();
+}
+function drawSustained(){
+  const s=sustainedSessions[Number(el('sustained-session').value)],root=el('sustained-chart');root.replaceChildren();
+  root.append(node('p',s.status+' · measured API time '+fmt(s.measured_api_ns)+' / target '+fmt(s.target_measured_api_ns)+' · '+s.profile+' pass'));if(s.reason)root.append(node('p',s.reason));
+  const raw=node('a','Raw session evidence');raw.href=(s.profile==='memory'&&data.memory_source?'raw-memory/':'raw/')+'trials/'+encodeURIComponent(s.trial)+'.json';root.append(raw);
+  if(!s.points.length){root.append(node('p','No complete session sequence. Unsupported and failed outcomes are retained.'));return;}
+  const metric=el('sustained-metric').value,first=Number(el('sustained-window').value)||0,points=s.points.slice(first,first+500),maximum=Math.max(1,...points.map(p=>p[metric]??0));
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 1000 180');svg.setAttribute('role','img');svg.setAttribute('aria-label','Sustained '+metric+' by elapsed session time; one independent process');
+  const xmin=points[0].window.start_ns,xmax=points[points.length-1].window.end_ns,x=p=>25+(p.window.operation_start_ns-xmin)/Math.max(1,xmax-xmin)*950,y=v=>145-v/maximum*125;
+  let previous=null;
+  for(const p of points){const value=p[metric];if(value===null||value===undefined){previous=null;continue;}const shape=(tag,attrs)=>{const n=document.createElementNS(svg.namespaceURI,tag);for(const [k,v]of Object.entries(attrs))n.setAttribute(k,v);svg.append(n);return n;};if(previous)shape('line',{x1:x(previous),y1:y(previous[metric]),x2:x(p),y2:y(value),stroke:'#617d87'});const dot=shape('circle',{cx:x(p),cy:y(value),r:3,fill:p.warmup?'#edb85f':'#70cbbb'});dot.append(node('title','Sample '+p.sample+' · '+((p.window.operation_start_ns)/1e9).toFixed(6)+' s · '+value+(p.warmup?' · warmup':'')));previous=p;}
+  root.append(svg,node('p','Window: '+(xmin/1e9).toFixed(6)+' – '+(xmax/1e9).toFixed(6)+' seconds since session epoch; warmup is amber. Missing domains remain gaps.'));
+  const wrap=node('div'),table=node('table'),head=node('tr');wrap.className='tablewrap';for(const label of ['Sample','Elapsed session seconds','Warmup','Value'])head.append(node('th',label));table.append(head);for(const p of points){const row=node('tr');row.append(node('td',p.sample),node('td',(p.window.operation_start_ns/1e9).toFixed(9)),node('td',p.warmup?'Yes':'No'),node('td',p[metric]===null||p[metric]===undefined?'Unavailable':p[metric].toLocaleString('en-US',{maximumFractionDigits:6})));table.append(row);}wrap.append(table);const rows=node('details');rows.append(node('summary','Exact sample window'),wrap);root.append(rows);
+  if(s.logical_release){const policy=s.logical_release.policy||'runtime_closed';root.append(node('p','Release policy: '+policy+' · API window: '+fmt(s.logical_release.end_ns-s.logical_release.start_ns)+' · runtime closed: '+s.logical_release.closed+'. '+(policy==='js_references_dropped'?'JS references dropped only; process engine, caches and GC remain uncontrolled.':'Allocator memory may remain after close.')));const d=node('details');d.append(node('summary','Release-window evidence · separate allocation/heap/GC domains'),node('pre',JSON.stringify(s.release_observations,null,2)));root.append(d);}
+  const collection=s.logical_release?.post_collection;
+  if(collection){
+    const value=name=>{const matches=(collection.observations||[]).filter(o=>o.metric===name&&o.status==='available'&&Number.isFinite(o.value));return matches.length===1?matches[0].value.toLocaleString('en-US'):'unavailable';};
+    root.append(node('h3','Post-Go-collection diagnostic'),node('p','Policy: '+collection.policy+' · separate diagnostic bracket: '+fmt(collection.end_ns-collection.start_ns)+'. Go heap after collection: '+value('host.heap.end')+' bytes · observed forced GC cycles: '+value('host.gc.forced_cycles')+'. Adapter and sample evidence remain alive. Not reclaimed RSS, runtime-only retained memory, or leak qualification.'));
+    const d=node('details');d.append(node('summary','Post-collection clocks and scoped observations'),node('pre',JSON.stringify(collection,null,2)));root.append(d);
+  }else root.append(node('p','Post-collection policy: none. No forced Go GC requested for this session.'));
+}
+function drawMemoryTimeline(){
+  if(!memoryTimelines.length)return;const t=memoryTimelines[Number(el('memory-measurement').value)],root=el('memory-chart');root.replaceChildren();
+  const first=Number(el('memory-window').value),points=t.points.slice(first,first+500),m=t.measurement;
+  root.append(node('p','Trial: '+t.trial_status+' · sequence: '+t.status+' · '+m.unit+' per '+m.normalization_denominator));
+  root.append(node('p',t.first_last_snapshot_change_bytes===null?'Whole-sequence endpoint change unavailable.':'Whole-sequence endpoint change (including any warmup): '+t.first_last_snapshot_change_bytes.toLocaleString()+' bytes. This is not allocation volume.'));
+  const evidence=node('a',t.evidence_source==='raw-memory'?'Raw paired memory trial':'Raw primary trial');evidence.href=memoryTimelineRawLink(t);root.append(evidence);
+  if(points.some(p=>p.value!==null)){
+    const width=Math.max(320,root.clientWidth),svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 '+width+' 220');svg.style.height='220px';svg.setAttribute('role','img');svg.setAttribute('aria-label','Memory snapshots by ordinal sample index; missing points not connected; warmup amber');
+    const max=points.reduce((v,p)=>Math.max(v,p.value??0),1),x=i=>85+i/Math.max(1,points.length-1)*(width-110),y=v=>170-v/max*145;
+    const shape=(tag,attrs)=>{const n=document.createElementNS(svg.namespaceURI,tag);for(const [k,v]of Object.entries(attrs))n.setAttribute(k,v);svg.append(n);return n;};
+    for(const value of [0,max]){shape('line',{x1:85,x2:width-25,y1:y(value),y2:y(value),stroke:'#354055'});shape('text',{x:78,y:y(value)+4,fill:'#a5b2c7','text-anchor':'end','font-size':11}).textContent=value.toPrecision(3);}
+    let previous=null;
+    points.forEach((p,i)=>{if(i===0||i===points.length-1)shape('text',{x:x(i),y:200,fill:'#a5b2c7','text-anchor':'middle','font-size':12}).textContent=p.sample_index;if(p.value===null){previous=null;return;}if(previous&&p.sample_index===previous.p.sample_index+1)shape('line',{x1:x(previous.i),x2:x(i),y1:y(previous.p.value),y2:y(p.value),stroke:'#70cbbb','data-segment':'snapshot'});const dot=shape('circle',{cx:x(i),cy:y(p.value),r:3,fill:p.warmup?'#edb85f':'#70cbbb'}),title=document.createElementNS(svg.namespaceURI,'title');title.textContent='Sample '+p.sample_index+': '+p.value+' bytes'+(p.warmup?' (warmup)':'');dot.append(title);previous={p,i};});root.append(svg);
+  }else root.append(node('p','No available snapshots in this window. See statuses below.'));
+  const details=node('details'),wrap=node('div'),table=node('table'),head=node('tr');wrap.className='tablewrap';['Sample index','Warmup','Bytes','Status / reason'].forEach(s=>head.append(node('th',s)));table.append(head);
+  for(const p of points){const row=node('tr');row.append(node('td',p.sample_index),node('td',p.warmup?'Yes':'No'),node('td',p.value===null?'Unavailable':p.value.toLocaleString()),node('td',p.status+(p.reason?' · '+p.reason:'')));table.append(row);}wrap.append(table);details.append(node('summary','All snapshots in this window (up to 500; use window selector for the complete sequence)'),wrap);root.append(details);
+  const provenance=node('details');provenance.append(node('summary','Snapshot definition and provenance'),node('pre',JSON.stringify(m,null,2)));root.append(provenance,node('p',data.memory_timeline_analysis_version+' · No cross-launch concatenation or time-rate estimate.'));
+  const domain=o=>JSON.stringify(Object.keys(o).filter(k=>k!=='phase').sort().map(k=>[k,o[k]]));
+  const footprints=t.evidence_source==='raw-memory'?(data.paired_density_footprints||[]):(data.density_footprints||[]);
+  const footprint=footprints.find(f=>f.trial===t.trial&&f.measurement.phase===t.scenario&&domain(f.measurement)===domain(m));
+  if(footprint){
+    const d=node('details'),w=node('div'),table=node('table'),h=node('tr');w.className='tablewrap';
+    ['Sample index','Warmup','Ready − before (bytes)','Released − ready (bytes)','Released − before (bytes)','Status'].forEach(s=>h.append(node('th',s)));table.append(h);
+    for(const p of footprint.points.slice(first,first+500)){const r=node('tr');r.append(node('td',p.sample_index),node('td',p.warmup?'Yes':'No'));for(const k of ['ready_minus_before_bytes','released_minus_ready_bytes','released_minus_before_bytes'])r.append(node('td',p[k]===null?'Unavailable':p[k].toLocaleString()));r.append(node('td',p.status));table.append(r);}
+    w.append(table);d.append(node('summary','Within-cycle footprint changes for this window'),node('p','Signed differences between matched snapshots in this launch and measurement domain. Negative means a smaller observed footprint, not proven allocator reclamation. These are not allocation volume, a leak test, or bytes per second. No forced collection is inferred.'),node('p','Boundary order: '+footprint.phases.join(' → ')),w,node('p',data.density_footprint_analysis_version));root.append(d);
+  }
+}
+const breakEven=data.break_even;
+if(breakEven){el('break-even').hidden=false;el('break-even-policy').textContent=breakEven.interpretation;for(const w of manifest.lock.workloads){const option=node('option',w.id);option.value=w.id;el('break-even-choice').append(option);}for(const r of manifest.lock.runtime_configurations){const option=node('option',r.id);option.value=r.id;el('break-even-runtime').append(option);}el('break-even-runtime').addEventListener('change',drawBreakEven);el('break-even-choice').addEventListener('change',drawBreakEven);window.addEventListener('resize',()=>drawBreakEven({preserveDetail:true}));drawBreakEven();}
+function drawBreakEven(options={}){
+  const runtime=el('break-even-runtime').value,curves=breakEven.curves.filter(c=>c.workload===el('break-even-choice').value&&(!runtime||c.runtime===runtime)),root=el('break-even-chart');root.replaceChildren();
+  const detail=el('break-even-detail');if(!options.preserveDetail){detail.hidden=true;detail.replaceChildren();}
+  const curveRoot=el('break-even-curves');curveRoot.replaceChildren();
+  root.append(node('p','Synthetic setup + observed call-time sums; includes warmup. Logarithmic invocation axis (N + 1), linear total time. No extrapolation beyond the final observed call. Activate a point for evidence; for overlapping curves, filter a runtime or use the inspection buttons in its counts table.'));
+  const width=Math.max(320,root.clientWidth),svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 '+width+' 240');svg.style.height='240px';svg.setAttribute('role','group');svg.setAttribute('aria-label','Setup plus cumulative observed invocation times by runtime configuration; activate a point for evidence');
+  const points=curves.flatMap(c=>c.points),maximum=Math.max(1,...points.map(p=>p.ci95_high??p.median_total_ns??0)),last=Math.max(1,...points.map(p=>p.invocations));
+  const x=n=>75+Math.log1p(n)/Math.log1p(last)*(width-100),y=v=>195-v/maximum*175,colors=['#70cbbb','#edb85f','#92c7ff','#ee96ac','#bca0ff','#d4df93'];
+  const shape=(tag,attrs)=>{const n=document.createElementNS(svg.namespaceURI,tag);for(const [k,v]of Object.entries(attrs))n.setAttribute(k,v);svg.append(n);return n;};
+  for(const value of [0,maximum/2,maximum]){shape('line',{x1:75,x2:width-25,y1:y(value),y2:y(value),stroke:'#354055'});shape('text',{x:67,y:y(value)+4,fill:'#a5b2c7','text-anchor':'end','font-size':11}).textContent=fmt(value);}
+  let previousLabel=-100;for(const n of [...new Set(points.map(p=>p.invocations))]){if(n!==last&&(x(n)-previousLabel<32||x(last)-x(n)<32))continue;shape('text',{x:x(n),y:220,fill:'#a5b2c7','text-anchor':'middle','font-size':12}).textContent=n;previousLabel=x(n);}
+  curves.forEach((c,i)=>{let previous;for(const p of c.points){if(!Number.isFinite(p.median_total_ns)){previous=undefined;continue;}if(previous)shape('line',{x1:x(previous.invocations),y1:y(previous.median_total_ns),x2:x(p.invocations),y2:y(p.median_total_ns),stroke:colors[i%colors.length]});if(Number.isFinite(p.ci95_low)&&Number.isFinite(p.ci95_high))shape('line',{x1:x(p.invocations),x2:x(p.invocations),y1:y(p.ci95_low),y2:y(p.ci95_high),stroke:colors[i%colors.length],'stroke-width':2});const dot=shape('circle',{cx:x(p.invocations),cy:y(p.median_total_ns),r:5,fill:colors[i%colors.length],tabindex:0,role:'button','aria-label':c.runtime+' · N='+p.invocations+' · '+fmt(p.median_total_ns)+' · open point evidence'}),title=document.createElementNS(svg.namespaceURI,'title');title.textContent=c.runtime+' · N='+p.invocations+'\nTotal: '+fmt(p.median_total_ns)+'\nComplete blocks: '+c.complete_blocks.length+' / '+c.planned_blocks;dot.append(title);dot.addEventListener('click',()=>openBreakEvenPoint(c,p));dot.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openBreakEvenPoint(c,p);}});previous=p;}});root.append(svg);
+  curves.forEach((c,i)=>{const heading=node('h3',c.runtime+' · '+c.status);heading.style.color=colors[i%colors.length];curveRoot.append(heading,node('p','Setup: '+c.setup_scenarios.join(' + ')+' · complete blocks: '+c.complete_blocks.length+' / '+c.planned_blocks+(c.reason?' · '+c.reason:'')));
+    const details=node('details'),table=node('table'),head=node('tr');['Invocations','Median total','Pointwise 95% interval','Inspect'].forEach(s=>head.append(node('th',s)));table.append(head);for(const p of c.points){const row=node('tr'),inspect=node('td');if(Number.isFinite(p.median_total_ns)){const button=node('button','N='+p.invocations);button.type='button';button.setAttribute('aria-label',c.runtime+' · N='+p.invocations+' · inspect point');button.addEventListener('click',()=>openBreakEvenPoint(c,p));inspect.append(button);}else inspect.textContent='Unavailable';row.append(node('td',p.invocations),node('td',fmt(p.median_total_ns)),node('td',p.ci95_low===null?'Insufficient blocks':fmt(p.ci95_low)+' – '+fmt(p.ci95_high)),inspect);table.append(row);}const wrap=node('div');wrap.className='tablewrap';wrap.append(table);details.append(node('summary','Observed counts, uncertainty and source trials'),wrap,node('pre',JSON.stringify(c.scenario_outcomes,null,2)));const links=node('ul');for(const id of c.source_trials){const item=node('li'),a=node('a',id);a.href='raw/trials/'+encodeURIComponent(id)+'.json';item.append(a);links.append(item);}details.append(links);curveRoot.append(details);
+  });curveRoot.append(node('p',breakEven.analysis_version+' · '+breakEven.method));
+}
+function openBreakEvenPoint(curve,point){
+  const root=el('break-even-detail');root.replaceChildren();root.hidden=false;
+  const close=node('button','Close');close.type='button';close.addEventListener('click',()=>{root.hidden=true;root.replaceChildren();});root.append(close);
+  root.append(node('h3',curve.runtime+' · '+curve.workload+' · N='+point.invocations));
+  root.append(node('p','Synthetic total: '+fmt(point.median_total_ns)));
+  root.append(node('p',Number.isFinite(point.ci95_low)&&Number.isFinite(point.ci95_high)?'Pointwise 95% interval: '+fmt(point.ci95_low)+' – '+fmt(point.ci95_high):'95% interval unavailable: insufficient complete blocks.'));
+  const warmup=Math.min(point.invocations,manifest.lock.options.warmup||0);
+  root.append(node('p','Setup: '+curve.setup_scenarios.join(' + ')+'; first '+point.invocations+' observed calls, including '+warmup+' warmup calls. Separate-process setup medians plus observed call-time sums—not end-to-end latency or a forecast.'));
+  root.append(node('p','Complete blocks: '+curve.complete_blocks.length+' / '+curve.planned_blocks+' · '+curve.status+(curve.reason?' · '+curve.reason:'')));
+  const table=node('table'),heading=node('tr');['Block','Scenario','Contribution','Raw trial'].forEach(label=>heading.append(node('th',label)));table.append(heading);
+  for(const id of curve.source_trials){
+    const trial=data.bundle.trials.find(t=>t.id===id),row=node('tr'),cell=node('td'),link=node('a',id);link.href='raw/trials/'+encodeURIComponent(id)+'.json';cell.append(link);
+    const contribution=trial?.scenario==='trajectory'?(point.invocations?'Samples 0–'+(point.invocations-1)+'; warmup included':'No call time at N=0; complete trajectory required for block eligibility'):'Per-operation median of all verified setup samples';
+    row.append(node('td',trial?.block??'Unavailable'),node('td',trial?.scenario??'Unavailable'),node('td',trial?contribution:'See raw evidence'),cell);table.append(row);
+  }
+  const wrap=node('div');wrap.className='tablewrap';wrap.append(table);root.append(wrap);
+  const configuration=manifest.lock.runtime_configurations.find(r=>r.id===curve.runtime),details=node('details');details.append(node('summary','Exact runtime configuration'),node('pre',JSON.stringify(configuration??{status:'unavailable'},null,2)));root.append(details);
+  const reproduce=node('a','Reproduction instructions');reproduce.href='#reproduce';root.append(reproduce,node('p',breakEven.analysis_version+' · '+breakEven.method));
+  root.scrollIntoView({behavior:'smooth',block:'start'});
+}
+</script></body></html>

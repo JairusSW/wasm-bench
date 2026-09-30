@@ -1,0 +1,7 @@
+# Local integration image; build the normal wasmbench image first. Exact tool
+# executable hashes are captured by source-lock, not inferred from this tag.
+ARG BASE_IMAGE=wasmbench:admission-v1
+FROM ${BASE_IMAGE}
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends clang-16 lld-16 \
+    && rm -rf /var/lib/apt/lists/*

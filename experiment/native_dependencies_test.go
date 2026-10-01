@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -36,6 +37,51 @@ func writeMachO(t *testing.T, path string, imports, rpaths []string) {
 	}
 	if err := os.WriteFile(path, append(header, commands...), 0644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMachOPinsUniversalShellDependencies(t *testing.T) {
+	if runtime.GOARCH != "arm64" && runtime.GOARCH != "amd64" {
+		t.Skip("fixture covers supported native architectures")
+	}
+	dir := t.TempDir()
+	slice := filepath.Join(dir, "slice")
+	library := filepath.Join(dir, "libengine.dylib")
+	writeMachO(t, library, nil, nil)
+	writeMachO(t, slice, []string{"@rpath/libengine.dylib"}, []string{"@executable_path"})
+	thin, err := os.ReadFile(slice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fat := make([]byte, 12288)
+	binary.BigEndian.PutUint32(fat, 0xcafebabe)
+	binary.BigEndian.PutUint32(fat[4:], 2)
+	for i, cpu := range []uint32{0x100000c, 0x1000007} {
+		offset := 4096 * (i + 1)
+		arch := fat[8+i*20:]
+		for j, v := range []uint32{cpu, 0, uint32(offset), uint32(len(thin)), 12} {
+			binary.BigEndian.PutUint32(arch[j*4:], v)
+		}
+		copy(fat[offset:], thin)
+		binary.LittleEndian.PutUint32(fat[offset+4:], cpu)
+	}
+	exe := filepath.Join(dir, "shell")
+	if err = os.WriteFile(exe, fat, 0755); err != nil {
+		t.Fatal(err)
+	}
+	digest, _ := DigestFile(exe)
+	r := Runtime{Command: []string{exe}, Files: map[string]string{exe: digest}}
+	if err = pinNativeDependencies(&r); err != nil {
+		t.Fatal(err)
+	}
+	if r.Files[library] == "" {
+		t.Fatal("universal shell library missing from pinned closure", r)
+	}
+	if err = os.WriteFile(library, []byte("changed"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if VerifyInputs(Lock{Runtimes: []Runtime{r}}, dir) == nil {
+		t.Fatal("accepted upgraded fat shell library")
 	}
 }
 
@@ -72,5 +118,21 @@ func TestMachORefusesUnresolvedLoaderRelativeLibrary(t *testing.T) {
 	r := Runtime{Command: []string{executable}, Files: map[string]string{}}
 	if err := pinNativeDependencies(&r); err == nil {
 		t.Fatal("silently omitted required dependency")
+	}
+}
+
+func TestMachOAbsoluteRpathIsHostPrerequisite(t *testing.T) {
+	exe := filepath.Join(t.TempDir(), "bin", "adapter")
+	sdk := t.TempDir()
+	library := filepath.Join(sdk, "libengine.dylib")
+	writeMachO(t, library, nil, nil)
+	writeMachO(t, exe, []string{"@rpath/libengine.dylib"}, []string{sdk})
+	digest, _ := DigestFile(exe)
+	r := Runtime{Command: []string{exe}, Files: map[string]string{exe: digest}}
+	if err := pinNativeDependencies(&r); err != nil {
+		t.Fatal(err)
+	}
+	if r.Files[library] != "" || r.HostFiles[library] == "" {
+		t.Fatal("absolute SDK rpath incorrectly advertised as relocatable", r)
 	}
 }

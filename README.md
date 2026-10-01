@@ -59,10 +59,13 @@ For Wasmtime or a local Wago checkout:
 | `wazero`, `wazero-interpreter` | Go | Compiler and interpreter stay separate |
 | `wasmtime`, `wasmtime-winch` | Rust | Cranelift and Winch stay separate |
 | `v8` | Node.js | Production-default tiering; controlled modes are separate configurations |
+| `v8-shell`, `spidermonkey`, `jsc`, `deno` | Direct JS engines | Import-free core integer scalar timing and memory |
+| `wasmi`, `wavm`, `wasm3`, `wasmedge` | Native embeddings | Bounded core contracts; wasm3 has no separate instantiate stage |
 
 Support depends on the scenario, ABI, profile, platform and advertised adapter capabilities.
 WASI commands/reactors, bounded Emscripten hosts and Component Model profiles
 have separate contracts. See [all workflows](docs/REFERENCE.md).
+See [adapter setup and support limits](docs/ADAPTERS.md) for the additional engines.
 
 ## Run an experiment
 
@@ -126,7 +129,7 @@ privileges. Build before measuring; keep unrelated work off measurement CPUs.
 ```sh
 go test ./...
 go vet ./...
-node --test adapters/v8/*.test.mjs publish/report-ui.test.mjs recipes/*.test.mjs
+node --test adapters/v8/*.test.mjs adapters/js-shell/*.test.mjs publish/report-ui.test.mjs recipes/*.test.mjs
 ```
 
 The default Go suite skips opt-in adapter/platform tests. A package PASS is not

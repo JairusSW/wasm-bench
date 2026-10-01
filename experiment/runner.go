@@ -78,13 +78,20 @@ func ResolveRuntimes(root string, ids []string) ([]Runtime, error) {
 				r.Command = append(r.Command, "--trace-wasm-events")
 			}
 		default:
-			return nil, fmt.Errorf("unknown runtime configuration %q", id)
+			command, supported, err := extraRuntimeCommand(root, id)
+			if err != nil {
+				return nil, err
+			}
+			if !supported {
+				return nil, fmt.Errorf("unknown runtime configuration %q", id)
+			}
+			r.Command = command
 		}
 		if id != "v8" && !strings.HasPrefix(id, "v8-") {
 			r.Command[0] = NativeExecutable(r.Command[0])
 		}
 		for _, path := range r.Command {
-			if strings.HasPrefix(path, "--") {
+			if strings.HasPrefix(path, "--") || strings.HasPrefix(path, "runtime=") || strings.HasPrefix(path, "binary-sha256=") || path == "-f" || path == "run" {
 				continue
 			}
 			hash, e := DigestFile(path)

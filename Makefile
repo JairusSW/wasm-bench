@@ -5,6 +5,6 @@ build:
 	go build -trimpath -o bin/adapter-wazero ./adapters/wazero
 test:
 	go test ./...
-	node --test publish/report-ui.test.mjs recipes/*.test.mjs
+	node --test adapters/v8/*.test.mjs adapters/js-shell/*.test.mjs publish/report-ui.test.mjs recipes/*.test.mjs
 demo: build
 	./bin/wasmbench run --suite core --runtimes wazero,v8 --launches 3 --samples 5 --operations 10

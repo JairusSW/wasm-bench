@@ -607,7 +607,7 @@ func run(ctx context.Context, args []string) error {
 			return fmt.Errorf("doctor does not accept positional arguments")
 		}
 		checks := map[string]string{}
-		for _, tool := range []string{"go", "node", "wasmtime", "wago", "cargo", "perf", "duckdb"} {
+		for _, tool := range []string{"go", "node", "wasmtime", "wago", "cargo", "perf", "duckdb", "d8", "spidermonkey", "jsc", "deno", "wavm", "wasm3", "wasmedge"} {
 			path, e := exec.LookPath(tool)
 			if e != nil {
 				checks[tool] = "unavailable"
@@ -687,7 +687,13 @@ func run(ctx context.Context, args []string) error {
 					return e
 				}
 			default:
-				return fmt.Errorf("unknown runtime %q", rt)
+				supported, err := experiment.BuildExtraRuntime(ctx, root, rt)
+				if err != nil {
+					return err
+				}
+				if !supported {
+					return fmt.Errorf("unknown runtime %q", rt)
+				}
 			}
 		}
 		return nil

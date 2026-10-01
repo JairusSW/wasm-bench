@@ -2,9 +2,11 @@ package experiment
 
 import (
 	"debug/macho"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -15,16 +17,25 @@ func pinNativeDependencies(r *Runtime) error {
 	if len(r.Command) == 0 {
 		return fmt.Errorf("empty command")
 	}
-	file, err := macho.Open(r.Command[0])
+	_, closeFile, err := openNativeMachO(r.Command[0])
 	if err != nil {
+		if errors.Is(err, errNoNativeMachOSlice) {
+			return err
+		}
 		return pinELFDependencies(r)
 	} // ELF is qualified separately; other formats retain the declared-file contract.
-	file.Close()
+	closeFile()
 	r.NativeDependencyPolicy = "macho-third-party-closure-v1; system shared-cache libraries excluded; absolute loads remain exact host prerequisites"
 	r.HostFiles = map[string]string{}
 	seen := map[string]bool{}
 	mainDir := filepath.Dir(r.Command[0])
 	expand := func(value, loader string) string {
+		if value == "@loader_path" {
+			return filepath.Dir(loader)
+		}
+		if value == "@executable_path" {
+			return mainDir
+		}
 		if strings.HasPrefix(value, "@loader_path/") {
 			return filepath.Join(filepath.Dir(loader), strings.TrimPrefix(value, "@loader_path/"))
 		}
@@ -33,8 +44,12 @@ func pinNativeDependencies(r *Runtime) error {
 		}
 		return value
 	}
-	var visit func(string, bool, []string) error
-	visit = func(path string, relocated bool, inherited []string) error {
+	type searchPath struct {
+		path        string
+		relocatable bool
+	}
+	var visit func(string, bool, []searchPath) error
+	visit = func(path string, relocated bool, inherited []searchPath) error {
 		key := fmt.Sprintf("%t:%s", relocated, path)
 		if seen[key] {
 			return nil
@@ -43,15 +58,15 @@ func pinNativeDependencies(r *Runtime) error {
 			return fmt.Errorf("native dependency closure exceeds 4096 files")
 		}
 		seen[key] = true
-		m, err := macho.Open(path)
+		m, closeFile, err := openNativeMachO(path)
 		if err != nil {
 			return err
 		}
-		defer m.Close()
-		search := []string{}
+		defer closeFile()
+		search := []searchPath{}
 		for _, load := range m.Loads {
 			if rp, ok := load.(*macho.Rpath); ok {
-				search = append(search, expand(rp.Path, path))
+				search = append(search, searchPath{expand(rp.Path, path), strings.HasPrefix(rp.Path, "@loader_path") || strings.HasPrefix(rp.Path, "@executable_path")})
 			}
 		}
 		search = append(search, inherited...)
@@ -66,12 +81,14 @@ func pinNativeDependencies(r *Runtime) error {
 				continue
 			}
 			target := expand(name, path)
+			canRelocate := strings.HasPrefix(name, "@loader_path/") || strings.HasPrefix(name, "@executable_path/")
 			if strings.HasPrefix(name, "@rpath/") {
 				target = ""
 				for _, dir := range search {
-					candidate := filepath.Join(dir, strings.TrimPrefix(name, "@rpath/"))
+					candidate := filepath.Join(dir.path, strings.TrimPrefix(name, "@rpath/"))
 					if info, e := os.Stat(candidate); e == nil && info.Mode().IsRegular() {
 						target = candidate
+						canRelocate = dir.relocatable
 						break
 					}
 				}
@@ -87,7 +104,7 @@ func pinNativeDependencies(r *Runtime) error {
 			if err != nil {
 				return err
 			}
-			moves := relocated && strings.HasPrefix(name, "@")
+			moves := relocated && canRelocate
 			if moves {
 				r.Files[target] = digest
 			} else {
@@ -100,4 +117,32 @@ func pinNativeDependencies(r *Runtime) error {
 		return nil
 	}
 	return visit(r.Command[0], true, nil)
+}
+
+var errNoNativeMachOSlice = errors.New("universal Mach-O has no native slice")
+
+// Universal SpiderMonkey shells and their dylibs must pin the native slice's
+// startup dependency closure too. Hashing only the fat executable is not enough.
+func openNativeMachO(path string) (*macho.File, func() error, error) {
+	if file, err := macho.Open(path); err == nil {
+		return file, file.Close, nil
+	}
+	fat, err := macho.OpenFat(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	wanted := macho.Cpu(0)
+	switch runtime.GOARCH {
+	case "arm64":
+		wanted = macho.CpuArm64
+	case "amd64":
+		wanted = macho.CpuAmd64
+	}
+	for _, arch := range fat.Arches {
+		if arch.Cpu == wanted {
+			return arch.File, fat.Close, nil
+		}
+	}
+	fat.Close()
+	return nil, nil, fmt.Errorf("%w for %s", errNoNativeMachOSlice, runtime.GOARCH)
 }

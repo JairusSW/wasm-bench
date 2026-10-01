@@ -5,6 +5,7 @@
 /.wasmbench/
 /suite.lock
 /adapters/wasmtime/target/
+/adapters/native/target/
 *.prof
 /.playwright-cli/
 /output/

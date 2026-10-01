@@ -6,6 +6,7 @@ runs
 reports
 output
 adapters/wasmtime/target
+adapters/native/target
 builds
 graphify-out
 .graphify

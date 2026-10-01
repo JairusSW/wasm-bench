@@ -7,6 +7,11 @@ has been published yet; development changes belong under Unreleased.
 
 ### Added
 
+- Direct V8 shell, SpiderMonkey, raw JavaScriptCore, Deno, wasmi, WAVM, wasm3
+  and WasmEdge adapters for bounded core integer scalar timing/memory contracts.
+  Includes stage barriers, exact i64 results, input/memory verification, explicit
+  SDK selection and unsupported-stage reporting for wasm3 instantiation.
+- Native dependency pinning for universal Mach-O engines and their dylibs.
 - Reproducible experiment planning, locked inputs, subprocess adapters, immutable
   run bundles, correctness oracles and exact-tool replay.
 - Wago, wazero compiler/interpreter, Wasmtime Cranelift/Winch and Node.js V8

@@ -12,7 +12,7 @@ Use Go 1.26+, Rust/Cargo and Node.js. Run commands from the repository root.
 make build
 go test ./...
 go vet ./...
-node --test adapters/v8/*.test.mjs publish/report-ui.test.mjs recipes/*.test.mjs
+node --test adapters/v8/*.test.mjs adapters/js-shell/*.test.mjs publish/report-ui.test.mjs recipes/*.test.mjs
 cargo test --locked --manifest-path adapters/wasmtime/Cargo.toml --features component-fixtures
 ```
 

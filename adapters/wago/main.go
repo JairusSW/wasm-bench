@@ -595,7 +595,7 @@ func main() {
 					}
 					b, err := a.compiled.MarshalBinary()
 					e = err
-					for metric, v := range map[string]float64{"native.code_image": float64(a.compiled.CodeSize()), "artifact.serialized": float64(len(b))} {
+					for metric, v := range map[string]float64{"native.code_image": float64(a.compiled.CodeSize()), "native.code_size": float64(a.compiled.CodeSize()), "artifact.serialized": float64(len(b))} {
 						resp.Diagnostics = append(resp.Diagnostics, protocol.Observation{Metric: metric, DefinitionVersion: 1, Value: protocol.Value(v), Unit: "bytes", Scope: "compiled_module", Phase: "compile", Collector: "wago.Compiled", CollectorVersion: sourceRevision, Quality: "engine_reported", Profile: "code", Status: "available", Denominator: "module"})
 					}
 				}

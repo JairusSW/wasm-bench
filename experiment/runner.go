@@ -125,7 +125,7 @@ func ResolveRuntimes(root string, ids []string) ([]Runtime, error) {
 			r.Files[path] = hash
 		}
 		if id == "v8" || id == "v8-liftoff-only" || id == "v8-optimizing-only" || id == "v8-tier-observed" || id == "v8-tier-traced" {
-			helpers := []string{"floats.mjs", "profiling.mjs", "compiler-mode.mjs", "harness.mjs", "wasi-readonly.mjs"}
+			helpers := []string{"floats.mjs", "profiling.mjs", "compiler-mode.mjs", "harness.mjs", "wasi-readonly.mjs", "native-size.mjs"}
 			if id == "v8-tier-observed" || id == "v8-tier-traced" {
 				helpers = []string{"floats.mjs"}
 			}
@@ -959,7 +959,7 @@ func runTrial(ctx context.Context, root string, o Options, r Runtime, w protocol
 			return
 		}
 	}
-	codeCompile := o.Profile == "code" && scenario == "compile" && r.Description.Capabilities["can_export_native_code"]
+	codeCompile := o.Profile == "code" && scenario == "compile" && (r.Description.Capabilities["can_export_native_code"] || r.Description.Capabilities["can_measure_native_code_size"])
 	commandPhasesUnsupported := o.PhaseBarriers && (!slices.Contains([]string{"compile", "instantiate", "first-call", "teardown"}, scenario) || !r.Description.Capabilities["can_command_"+scenario+"_phases"])
 	canRunCommand := r.Description.Capabilities["can_run_commands"]
 	if w.ABI == "component" {

@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {WASI} from 'node:wasi';
 import {readonlyWasiImports,normalizeWasiStdout} from './wasi-readonly.mjs';
+import {inspectNativeSize} from './native-size.mjs';
 import {profileRun} from './profiling.mjs';
 import * as harness from './harness.mjs';
 import {encodeFloats, verifyFloats, validateFloat, numericSignature, floatArguments} from './floats.mjs';
@@ -17,6 +18,8 @@ function compilerDescription(description) {
   if(!compilerModeProbe)return description;
   const configuration=description.effective_configuration;
   description.capabilities.can_control_compiler_mode=true;
+  description.capabilities.can_measure_native_code_size=compilerMode==='optimizing-only';
+  configuration.native_code_size_policy='isolated eager optimizing compilation; complete defined-function body-size diagnostic coverage; per-body metadata/padding included; shared engine/wrapper code excluded; no complete byte export';
   configuration.compiler_mode=configuration.tiering=compilerMode;
   if(process.execArgv.includes('--no-wasm-native-module-cache')){
     configuration.module_cache='disabled';
@@ -499,7 +502,7 @@ async function handle(req,profiled=false) {
       if(prep.workload.host_profile==='identity-v1')imports.wasmbench=Object.assign(Object.create(null),{identity:v=>v});
       if(prep.workload.host_profile==='assemblyscript-abort-v1')imports.env=Object.assign(Object.create(null),{abort:(message,file,line,column)=>{throw new Error(`AssemblyScript abort: message_ptr=${message>>>0} file_ptr=${file>>>0} line=${line>>>0} column=${column>>>0}`);}});
       if(wasiWorkload){
-        if(prep.profile!=='timing'||prep.workload.host_profile!=='wasi-preview1-readonly-v1'||prep.workload.oracle.kind!=='exact_command'||!prep.workload.command||prep.workload.reset!=='fresh_instance_per_sample'||!['','llvm-ir-preds'].includes(prep.workload.command.stdout_normalize || ''))
+        if(!['timing','code'].includes(prep.profile)||prep.workload.host_profile!=='wasi-preview1-readonly-v1'||prep.workload.oracle.kind!=='exact_command'||!prep.workload.command||prep.workload.reset!=='fresh_instance_per_sample'||!['','llvm-ir-preds'].includes(prep.workload.command.stdout_normalize || ''))
           return {status:'unsupported',reason:'Node WASI Preview 1 adapter supports timing only for exact-command, fresh-instance workloads without stdout normalization'};
       }else if (prep.workload.abi !== 'core' || !['stateless','fresh_instance_per_sample'].includes(prep.workload.reset)) throw new Error('unsupported ABI or reset policy');
       bytes = fs.readFileSync(prep.artifact);
@@ -582,7 +585,7 @@ async function handle(req,profiled=false) {
       }
       return {samples};
     }
-    case 'inspect': return {diagnostics: [{metric: 'native.guest_code', definition_version: 1, unit: 'bytes', scope: 'guest_function_code', phase: 'compile', collector: 'Node.js', collector_version: process.version, quality: 'engine_reported', profile: 'code', status: 'unsupported', reason: 'standard JS API exposes neither tier nor native code', normalization_denominator: 'module'}]};
+    case 'inspect': return inspectNativeSize(prep.artifact,bytes,prep.artifact_sha256,compilerMode);
     case 'close': module = instance = bytes = prep = undefined; return {};
     default: throw new Error(`unknown method ${req.method}`);
   }

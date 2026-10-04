@@ -22,6 +22,7 @@ type CodeRecord struct {
 	ImageBytes *int    `json:"image_bytes"`
 	Index      int     `json:"report_record_index"`
 	SizeBytes  *uint64 `json:"size_bytes,omitempty"`
+	SizeNote   string  `json:"size_note,omitempty"`
 }
 
 func pairedCodeRecords(code experiment.Bundle, matched map[string]bool) []CodeRecord {
@@ -35,6 +36,7 @@ func pairedCodeRecords(code experiment.Bundle, matched map[string]bool) []CodeRe
 		record := CodeRecord{Runtime: trial.Runtime, Workload: trial.Workload, Trial: trial.ID, Status: native.Status, Reason: native.Reason, ImageBytes: native.Bytes, Index: i}
 		if eligible && trial.Status == "ok" {
 			var sizes []uint64
+			var notes []string
 			for _, observation := range trial.Observations {
 				if observation.Metric != "native.code_size" {
 					continue
@@ -47,9 +49,11 @@ func pairedCodeRecords(code experiment.Bundle, matched map[string]bool) []CodeRe
 					continue
 				}
 				sizes = append(sizes, uint64(value))
+				notes = append(notes, observation.Reason)
 			}
 			if len(sizes) == 1 && (native.Bytes == nil || uint64(*native.Bytes) == sizes[0]) {
 				record.SizeBytes = &sizes[0]
+				record.SizeNote = notes[0]
 			}
 		}
 		if !eligible {

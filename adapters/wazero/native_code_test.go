@@ -24,7 +24,7 @@ func TestWazevoNativeImageKeepsTimingCacheDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if image == nil || len(image.Data) == 0 || image.Backend != "wazevo" || len(observations) != 1 || *observations[0].Value != float64(len(image.Data)) {
+	if image == nil || len(image.Data) == 0 || image.Backend != "wazevo" || len(observations) != 2 || observations[1].Metric != "native.code_size" || *observations[1].Value != float64(len(image.Data)) || *observations[0].Value != float64(len(image.Data)) {
 		t.Fatalf("missing native segment: %+v", image)
 	}
 	if a.engine != nil || a.compiled != nil {

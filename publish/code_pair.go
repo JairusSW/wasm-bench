@@ -1,6 +1,9 @@
 package publish
 
-import "github.com/wasmbench/wasmbench/experiment"
+import (
+	"github.com/wasmbench/wasmbench/experiment"
+	"math"
+)
 
 type CodeSource struct {
 	ID      string `json:"id"`
@@ -11,13 +14,14 @@ type CodeSource struct {
 // CodeRecord points at a separately sealed code-pass record. ImageBytes is a
 // mixed native image, never a guest-function instruction count.
 type CodeRecord struct {
-	Runtime    string `json:"runtime"`
-	Workload   string `json:"workload"`
-	Trial      string `json:"trial"`
-	Status     string `json:"status"`
-	Reason     string `json:"reason,omitempty"`
-	ImageBytes *int   `json:"image_bytes"`
-	Index      int    `json:"report_record_index"`
+	Runtime    string  `json:"runtime"`
+	Workload   string  `json:"workload"`
+	Trial      string  `json:"trial"`
+	Status     string  `json:"status"`
+	Reason     string  `json:"reason,omitempty"`
+	ImageBytes *int    `json:"image_bytes"`
+	Index      int     `json:"report_record_index"`
+	SizeBytes  *uint64 `json:"size_bytes,omitempty"`
 }
 
 func pairedCodeRecords(code experiment.Bundle, matched map[string]bool) []CodeRecord {
@@ -29,6 +33,25 @@ func pairedCodeRecords(code experiment.Bundle, matched map[string]bool) []CodeRe
 		}
 		native := nativeRecord(trial, i)
 		record := CodeRecord{Runtime: trial.Runtime, Workload: trial.Workload, Trial: trial.ID, Status: native.Status, Reason: native.Reason, ImageBytes: native.Bytes, Index: i}
+		if eligible && trial.Status == "ok" {
+			var sizes []uint64
+			for _, observation := range trial.Observations {
+				if observation.Metric != "native.code_size" {
+					continue
+				}
+				if observation.DefinitionVersion != 1 || observation.Status != "available" || observation.Value == nil || observation.Unit != "bytes" || observation.Scope != "compiled_module" || observation.Profile != "code" || observation.Phase != "compile" || observation.Quality != "engine_reported" || observation.Denominator != "module" || observation.Collector == "" || observation.CollectorVersion == "" {
+					continue
+				}
+				value := *observation.Value
+				if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 1<<53 || math.Trunc(value) != value {
+					continue
+				}
+				sizes = append(sizes, uint64(value))
+			}
+			if len(sizes) == 1 && (native.Bytes == nil || uint64(*native.Bytes) == sizes[0]) {
+				record.SizeBytes = &sizes[0]
+			}
+		}
 		if !eligible {
 			record.Status = "withheld_host_mismatch"
 			record.Reason = "code pass failed its observed host or CPU-partition policy"

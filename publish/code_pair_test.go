@@ -1,12 +1,42 @@
 package publish
 
 import (
+	"math"
 	"testing"
 
 	"github.com/wasmbench/wasmbench/agent"
 	"github.com/wasmbench/wasmbench/experiment"
 	"github.com/wasmbench/wasmbench/protocol"
 )
+
+func TestCodeSizeSurvivesTransportLimitWithoutInventingImage(t *testing.T) {
+	observation := protocol.Observation{Metric: "native.code_size", DefinitionVersion: 1, Value: protocol.Value(114175248), Unit: "bytes", Scope: "compiled_module", Phase: "compile", Profile: "code", Quality: "engine_reported", Status: "available", Denominator: "module", Collector: "Wazevo", CollectorVersion: "1.12.0"}
+	trial := experiment.Trial{ID: "large", Runtime: "r", Workload: "w", Scenario: "compile", Profile: "code", Status: "ok", Observations: []protocol.Observation{observation, {Metric: "native.code_export", Status: "unavailable", Reason: "transport limit"}}}
+	b := experiment.Bundle{Manifest: experiment.Manifest{Kind: "measurement"}, Trials: []experiment.Trial{trial}}
+	matched := map[string]bool{"r\x00w": true}
+	got := pairedCodeRecords(b, matched)[0]
+	if got.SizeBytes == nil || *got.SizeBytes != 114175248 || got.ImageBytes != nil || got.Status != "unavailable" {
+		t.Fatal(got)
+	}
+	for name, mutate := range map[string]func(*experiment.Trial){
+		"duplicate":         func(t *experiment.Trial) { t.Observations = append(t.Observations, observation) },
+		"failed":            func(t *experiment.Trial) { t.Status = "error" },
+		"nan":               func(t *experiment.Trial) { t.Observations[0].Value = protocol.Value(math.NaN()) },
+		"scope":             func(t *experiment.Trial) { t.Observations[0].Scope = "unknown" },
+		"profile":           func(t *experiment.Trial) { t.Observations[0].Profile = "timing" },
+		"conflicting image": func(t *experiment.Trial) { t.CodeImage = &protocol.CodeImage{Data: []byte{1, 2, 3}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			copy := trial
+			copy.Observations = append([]protocol.Observation(nil), trial.Observations...)
+			mutate(&copy)
+			b.Trials = []experiment.Trial{copy}
+			if pairedCodeRecords(b, matched)[0].SizeBytes != nil {
+				t.Fatal("invalid size evidence accepted")
+			}
+		})
+	}
+}
 
 func TestCodePairRequiresExactRuntimeAndWorkloadIdentity(t *testing.T) {
 	base := experiment.Bundle{Manifest: experiment.Manifest{Kind: "measurement", Host: agent.Host{OS: "darwin", Arch: "arm64"}, Lock: experiment.Lock{Protocol: 1, Options: experiment.Options{Profile: "timing"}, Runtimes: []experiment.Runtime{{ID: "r", Files: map[string]string{"adapter": "one"}}}, Workloads: []protocol.Workload{{ID: "w", SHA256: "digest", Artifact: "/original.wasm", Oracle: protocol.Oracle{Kind: "exact_u64", Expected: []uint64{7}}}}}}}

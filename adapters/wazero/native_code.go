@@ -134,6 +134,11 @@ func (a *adapter) inspectCode() (*protocol.CodeImage, []protocol.Observation, er
 	observation.Status = "available"
 	observation.Value = protocol.Value(float64(size))
 	diagnostics := []protocol.Observation{observation}
+	// Retain size independently from the bounded byte transport. Older reports
+	// omit this explicit metric and retain their original replay interpretation.
+	sizeObservation := observation
+	sizeObservation.Metric = "native.code_size"
+	diagnostics = append(diagnostics, sizeObservation)
 	if size > protocol.MaxCodeImageBytes {
 		diagnostics = append(diagnostics, protocol.Observation{Metric: "native.code_export", DefinitionVersion: 1, Unit: "bytes", Scope: "compiled_module", Collector: observation.Collector, CollectorVersion: observation.CollectorVersion, Profile: "code", Quality: "engine_reported", Status: "unavailable", Reason: "native segment exceeds transport budget; no partial export", Denominator: "module"})
 		return nil, diagnostics, nil

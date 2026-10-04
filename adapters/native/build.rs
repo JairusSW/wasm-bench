@@ -39,6 +39,9 @@ fn main() {
         .include(sdk.join("include"))
         .file(format!("src/{sdk_runtime}.cpp"));
     if runtime == "wavm" {
+        for header in ["wavm_wasi.h", "wavm_stdio.h", "wavm_readonly.h"] {
+            println!("cargo:rerun-if-changed=src/{header}");
+        }
         build.include(sdk.join("include/WAVM/Inline/xxhash"));
         build.define("WAVM_API", Some(""));
     }

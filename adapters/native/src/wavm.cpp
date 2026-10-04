@@ -2,6 +2,7 @@
 #include <WAVM/wavm-c/wavm-c.h>
 #include <memory>
 #include <WAVM/Runtime/Runtime.h>
+#include "wavm_wasi.h"
 struct Engine { wasm_engine_t* value=wasm_engine_new(); ~Engine(){if(value)wasm_engine_delete(value);} };
 struct Instance {
     wasm_compartment_t* compartment=nullptr;
@@ -44,6 +45,24 @@ int wb_object_code(const uint8_t* bytes,size_t size,uint8_t** output,size_t* out
     *output_size=object.size();*output=result.release();return 0;
 }WB_CATCH(-1)}
 void wb_object_delete(uint8_t* bytes){delete[] bytes;}
+void* wb_wasi_module_new(const uint8_t* bytes,size_t size){WB_TRY{
+    auto module=std::make_unique<WAVM::Runtime::ModuleRef>();
+    if(!WAVM::Runtime::loadBinaryModule(bytes,size,*module))throw std::runtime_error("WASI compilation failed");
+    return module.release();
+}WB_CATCH(nullptr)}
+void wb_wasi_module_delete(void* module){delete static_cast<WAVM::Runtime::ModuleRef*>(module);}
+void* wb_wasi_instance_new(void* module,const char* const* argv,size_t argc,const char* root,const uint8_t* input,size_t input_size,size_t limit){WB_TRY{
+    std::vector<std::string> args;for(size_t i=0;i<argc;i++)args.emplace_back(argv[i]);
+    std::vector<uint8_t> stdinBytes;if(input_size)stdinBytes.assign(input,input+input_size);
+    return new wb_wasi::CommandInstance(*static_cast<WAVM::Runtime::ModuleRef*>(module),std::move(args),root,stdinBytes,limit);
+}WB_CATCH(nullptr)}
+void wb_wasi_instance_delete(void* value){delete static_cast<wb_wasi::CommandInstance*>(value);}
+int wb_wasi_run(void* value,uint32_t* exit){WB_TRY{*exit=static_cast<uint32_t>(static_cast<wb_wasi::CommandInstance*>(value)->run());return 0;}WB_CATCH(-1)}
+uint64_t wb_wasi_memory_bytes(void* value){return static_cast<wb_wasi::CommandInstance*>(value)->memoryBytes();}
+const uint8_t* wb_wasi_output(void* value,bool error,size_t* size){
+    const auto& bytes=error?static_cast<wb_wasi::CommandInstance*>(value)->stderrBytes():static_cast<wb_wasi::CommandInstance*>(value)->stdoutBytes();
+    *size=bytes.size();return bytes.data();
+}
 const char* wb_error(){return wb_last_error.c_str();}
 const char* wb_version(){return WB_VERSION;}
 void* wb_engine_new(){WB_TRY{auto e=std::make_unique<Engine>();if(!e->value)throw std::runtime_error("engine creation failed");return e.release();}WB_CATCH(nullptr)}

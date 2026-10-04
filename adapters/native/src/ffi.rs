@@ -172,3 +172,100 @@ pub fn object_code(bytes: &[u8]) -> Result<Vec<u8>> {
         Ok(object)
     }
 }
+
+#[cfg(feature = "wavm")]
+mod wasi {
+    use super::*;
+    unsafe extern "C" {
+        fn wb_wasi_module_new(bytes: *const u8, size: usize) -> *mut c_void;
+        fn wb_wasi_module_delete(module: *mut c_void);
+        fn wb_wasi_instance_new(
+            module: *mut c_void,
+            argv: *const *const c_char,
+            argc: usize,
+            root: *const c_char,
+            input: *const u8,
+            input_size: usize,
+            limit: usize,
+        ) -> *mut c_void;
+        fn wb_wasi_instance_delete(instance: *mut c_void);
+        fn wb_wasi_run(instance: *mut c_void, exit: *mut u32) -> i32;
+        fn wb_wasi_memory_bytes(instance: *mut c_void) -> u64;
+        fn wb_wasi_output(instance: *mut c_void, error: bool, size: *mut usize) -> *const u8;
+    }
+    pub struct WasiModule(NonNull<c_void>);
+    pub struct WasiInstance(NonNull<c_void>);
+    impl Drop for WasiModule {
+        fn drop(&mut self) {
+            unsafe { wb_wasi_module_delete(self.0.as_ptr()) }
+        }
+    }
+    impl Drop for WasiInstance {
+        fn drop(&mut self) {
+            unsafe { wb_wasi_instance_delete(self.0.as_ptr()) }
+        }
+    }
+    impl WasiModule {
+        pub fn compile(bytes: &[u8]) -> Result<Self> {
+            unsafe {
+                NonNull::new(wb_wasi_module_new(bytes.as_ptr(), bytes.len()))
+                    .map(Self)
+                    .ok_or_else(error)
+            }
+        }
+        pub fn instantiate(
+            &self,
+            argv: &[String],
+            root: &str,
+            input: &[u8],
+            limit: usize,
+        ) -> Result<WasiInstance> {
+            let args: Vec<CString> = argv
+                .iter()
+                .map(|s| CString::new(s.as_str()))
+                .collect::<std::result::Result<_, _>>()?;
+            let pointers: Vec<_> = args.iter().map(|s| s.as_ptr()).collect();
+            let root = CString::new(root)?;
+            unsafe {
+                NonNull::new(wb_wasi_instance_new(
+                    self.0.as_ptr(),
+                    pointers.as_ptr(),
+                    pointers.len(),
+                    root.as_ptr(),
+                    input.as_ptr(),
+                    input.len(),
+                    limit,
+                ))
+                .map(WasiInstance)
+                .ok_or_else(error)
+            }
+        }
+    }
+    impl WasiInstance {
+        pub fn memory_bytes(&self) -> u64 {
+            unsafe { wb_wasi_memory_bytes(self.0.as_ptr()) }
+        }
+        pub fn run(&self) -> Result<u32> {
+            let mut exit = 0;
+            unsafe {
+                if wb_wasi_run(self.0.as_ptr(), &mut exit) != 0 {
+                    return Err(error());
+                }
+            }
+            Ok(exit)
+        }
+        pub fn output(&self, stderr: bool) -> Vec<u8> {
+            let mut size = 0;
+            unsafe {
+                let ptr = wb_wasi_output(self.0.as_ptr(), stderr, &mut size);
+                if size == 0 {
+                    vec![]
+                } else {
+                    std::slice::from_raw_parts(ptr, size).to_vec()
+                }
+            }
+        }
+    }
+}
+#[cfg(feature = "wavm")]
+pub use wasi::WasiModule;

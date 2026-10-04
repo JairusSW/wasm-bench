@@ -1,4 +1,6 @@
 #[cfg(feature = "wavm")]
+mod commands;
+#[cfg(feature = "wavm")]
 mod native_object;
 use anyhow::{Result, bail, ensure};
 use serde_json::{Value, json};
@@ -185,6 +187,15 @@ impl Adapter {
                     );
                 }
                 if cfg!(feature = "wavm") {
+                    description["description"]["abis"] = json!(["core", "wasi-command"]);
+                    description["description"]["effective_configuration"]["command_policy"] = json!(
+                        "Public WAVM WASI embedding; fresh process and instance per operation; fixture staging excluded; instantiation includes compartment, context, WASI process/resolver and guest instantiation; call includes only _start invocation and exit capture; output verification excluded; bounded stdio; read-only verified fixture directory; engine clocks and random source retained"
+                    );
+                    description["description"]["capabilities"]["can_run_commands"] = json!(true);
+                    for name in ["compile", "instantiate", "first-call"] {
+                        description["description"]["capabilities"]
+                            [format!("can_command_{name}_phases")] = json!(true);
+                    }
                     description["description"]["capabilities"]["can_measure_native_code_size"] =
                         json!(true);
                 }
@@ -200,6 +211,22 @@ impl Adapter {
                 self.bytes.clear();
                 let p = &req["prepare"];
                 let w = &p["workload"];
+                #[cfg(feature = "wavm")]
+                if w["abi"] == "wasi-command" {
+                    commands::validate(w)?;
+                    ensure!(
+                        ["timing", "memory", "code"].contains(&field(p, "profile")?),
+                        "unsupported: command profile"
+                    );
+                    let bytes = fs::read(field(p, "artifact")?)?;
+                    ensure!(
+                        hex::encode(Sha256::digest(&bytes)) == field(p, "artifact_sha256")?,
+                        "artifact digest mismatch"
+                    );
+                    self.bytes = bytes;
+                    self.prep = Some(p.clone());
+                    return Ok(json!({}));
+                }
                 let vector_contract = (cfg!(feature = "wasmer_llvm")
                     || cfg!(feature = "wasmer_singlepass")
                     || cfg!(feature = "wavm"))
@@ -284,6 +311,14 @@ impl Adapter {
                 Ok(json!({}))
             }
             "run" => {
+                #[cfg(feature = "wavm")]
+                if self
+                    .prep
+                    .as_ref()
+                    .is_some_and(|p| p["workload"]["abi"] == "wasi-command")
+                {
+                    return self.run_command(req, input);
+                }
                 #[cfg(any(
                     feature = "wasmer_llvm",
                     feature = "wasmer_singlepass",

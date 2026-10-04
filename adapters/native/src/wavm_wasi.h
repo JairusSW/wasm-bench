@@ -62,6 +62,7 @@ public:
         if(output->overflow||error->overflow)throw std::runtime_error("WASI output limit exceeded");
         return code;
     }
+    uint64_t memoryBytes() const {auto memory=WAVM::Runtime::asMemoryNullable(WAVM::Runtime::getInstanceExport(instance,"memory"));return uint64_t(WAVM::Runtime::getMemoryNumPages(memory))*65536;}
     const std::vector<WAVM::U8>& stdoutBytes() const{return output->bytes;}
     const std::vector<WAVM::U8>& stderrBytes() const{return error->bytes;}
 };

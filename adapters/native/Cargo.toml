@@ -6,7 +6,7 @@ edition = "2024"
 [features]
 default = ["wasmi"]
 wasmi = ["dep:wasmi"]
-wavm = ["dep:object"]
+wavm = ["dep:object", "dep:base64", "dep:tempfile"]
 wamr = []
 wasm3 = []
 wasmedge = []
@@ -22,6 +22,9 @@ wasmparser = "=0.251.0"
 wasmi = { version = "=2.0.0", optional = true, default-features = false, features = ["std", "validate", "portable-dispatch"] }
 
 object = { version = "=0.37.3", optional = true, default-features = false, features = ["read", "std"] }
+
+base64 = { version = "=0.22.1", optional = true }
+tempfile = { version = "=3.27.0", optional = true }
 
 [build-dependencies]
 cc = "1"

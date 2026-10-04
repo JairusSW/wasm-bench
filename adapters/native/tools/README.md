@@ -41,9 +41,11 @@ The private `wavm_wasi.h` helper uses WAVM's public WASI resolver, process,
 instance, and invocation APIs. `CommandInstance` keeps compilation separate
 from per-instance WASI setup and captures `proc_exit`. Its buffers retain output
 after guest descriptor closure and enforce output limits. The fixture filesystem
-permits reads and rejects mutation, parent traversal, and symlinks. This helper
-still needs the adapter protocol and command-oracle integration before collecting
-WASI workload measurements.
+permits reads and rejects mutation, parent traversal, and symlinks. The adapter protocol now supports WASI command timing, memory phase barriers,
+and native-size inspection. Command verification checks exact exit status and
+raw stdout/stderr digests, with a separate canonical digest for LLVM output.
+`../tests/wavm-wasi-protocol.py ADAPTER` checks these paths and output-limit
+rejection; full corpus compatibility must be established separately.
 
 The native tests use the same SDK as the adapter:
 

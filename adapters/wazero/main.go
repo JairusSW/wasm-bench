@@ -515,7 +515,7 @@ func main() {
 				if info, ok := debug.ReadBuildInfo(); ok {
 					build = info.String()
 				}
-				resp.Description = &protocol.Description{Runtime: "wazero", Version: "1.12.0", Backend: backend, Embedding: "Go API", Build: build, Configuration: map[string]string{"compilation_cache": "disabled", "compile_policy": "fresh uncached module per operation; empty runtime prepared outside timer; verification, module close and instance close outside timer; no untimed retained module", "context_termination": "enabled", "start_functions": "explicit_disabled", "backend": backend}, Capabilities: map[string]bool{"can_compile_separately": true, "can_instantiate_separately": true, "can_disable_code_cache": true, "can_measure_host_allocations": true, "can_export_native_code": false, "can_observe_tiers": false, "can_snapshot": false}, Scenarios: []string{"engine-init", "compile", "instantiate", "first-call", "steady", "trajectory", "teardown"}, ABIs: []string{"core"}, Features: []string{"mvp", "bulk-memory", "simd", "reference-types", "multi-value"}}
+				resp.Description = &protocol.Description{Runtime: "wazero", Version: "1.12.0", Backend: backend, Embedding: "Go API", Build: build, Configuration: map[string]string{"compilation_cache": "disabled", "compile_policy": "fresh uncached module per operation; empty runtime prepared outside timer; verification, module close and instance close outside timer; no untimed retained module", "context_termination": "enabled", "start_functions": "explicit_disabled", "backend": backend}, Capabilities: map[string]bool{"can_compile_separately": true, "can_instantiate_separately": true, "can_disable_code_cache": true, "can_measure_host_allocations": true, "can_export_native_code": !a.interpreter, "can_observe_tiers": false, "can_snapshot": false}, Scenarios: []string{"engine-init", "compile", "instantiate", "first-call", "steady", "trajectory", "teardown"}, ABIs: []string{"core"}, Features: []string{"mvp", "bulk-memory", "simd", "reference-types", "multi-value"}}
 				resp.Description.Scenarios = append(resp.Description.Scenarios, "app-init")
 				resp.Description.Scenarios = append(resp.Description.Scenarios, protocol.HarnessCalibrationScenario)
 				resp.Description.Configuration["harness_calibration_policy"] = protocol.HarnessCalibrationPolicy
@@ -587,6 +587,9 @@ func main() {
 				resp.Description.Configuration["vector_instantiate_phases_policy"] = "fresh instance; prepared module/engine retained; instantiation includes Wasm start; explicit initialization, ordered vector calls, oracle verification and release outside API window; no forced GC"
 				resp.Description.Capabilities["can_vector_teardown_phases"] = true
 				resp.Description.Capabilities["can_command_teardown_phases"] = true
+				if !a.interpreter {
+					resp.Description.Configuration["code_export"] = "separate code-profile compilation with an empty temporary file cache; pinned Wazevo 1.12.0 native segment and CRC; excludes serialized metadata, separate shared helpers and entry preambles; no instruction-only attribution; timing compilation cache remains disabled"
+				}
 				resp.Description.PhaseReleasePolicy = "close measured instance and compiled module; engine retained; no forced GC"
 				if !a.interpreter {
 					resp.Description.PhaseReleasePolicy += "; native continuation stages discard capture after active invocation and close verified instance; shared compiled module/engine retained until batch close"
@@ -601,11 +604,7 @@ func main() {
 					resp.Samples, err = a.run(req.Run)
 				}
 			case "inspect":
-				resp.Diagnostics = []protocol.Observation{{Metric: "native.guest_code", DefinitionVersion: 1, Unit: "bytes", Scope: "guest_function_code", Collector: "wazero", CollectorVersion: "1.12.0", Profile: "code", Quality: "engine_reported", Status: "unsupported", Reason: "public embedding API does not export function code", Denominator: "module"}}
-				if a.interpreter {
-					resp.Diagnostics[0].Status = "not_applicable"
-					resp.Diagnostics[0].Reason = "interpreter does not emit native guest functions"
-				}
+				resp.CodeImage, resp.Diagnostics, err = a.inspectCode()
 			case "close":
 				a.close()
 			default:

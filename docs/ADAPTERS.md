@@ -157,3 +157,15 @@ order. Exact-tool archive restoration and replay also passed for all eight.
 That is bounded core-contract evidence, not full conformance, Linux/Windows qualification or
 dedicated-host performance evidence. An unset opt-in variable skips the real
 engine test; the structured gate above must accompany acceptance claims.
+
+## Wazevo native image capture
+
+The Wazero compiler adapter exports the native executable segment serialized by
+Wazevo 1.12.0 into a fresh temporary compilation cache during the code-only pass.
+It verifies the cache version, function offsets, segment length and Castagnoli
+CRC, and removes the temporary cache afterward. Timing and memory compilation
+still use uncached runtimes. The image excludes cache metadata, separate shared
+helpers and entry preambles. Its bytes may include padding and embedded data;
+instruction-only function attribution is unavailable. Interpreters report N/A.
+Oversize segments retain an exact verified byte count but are never truncated
+into a pretend complete inspectable image.

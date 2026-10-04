@@ -26,3 +26,10 @@ test('streaming diagnostics discard large disassembly while validating every bod
  const incomplete=nativeSizeStream(1);incomplete.write('--- WebAssembly code ---\n');assert.throws(()=>incomplete.finish());
  const huge=nativeSizeStream(0);huge.write('x'.repeat(65537));assert.throws(()=>huge.finish());
 });
+
+test('streamed metadata rejects duplicate, wrong-tier, and impossible bodies',()=>{
+ const block='--- WebAssembly code ---\nindex: 0\nkind: wasm function\ncompiler: TurboFan\nBody (size = 64)\nInstructions (size = 36)\n--- End code ---\n';
+ for(const text of [block+block,block.replace('TurboFan','Liftoff'),block.replace('36','65')]) {
+  const parser=nativeSizeStream(1);for(let i=0;i<text.length;i+=7)parser.write(text.slice(i,i+7));assert.throws(()=>parser.finish());
+ }
+});

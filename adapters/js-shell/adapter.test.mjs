@@ -56,3 +56,34 @@ test('fresh reset cannot be batched as stateless',async()=>{const w=work();w.res
 test('protocol and unknown scenario reject',async()=>{assert.equal((await session([{method:'describe',version:2}]))[0].status,'error');const out=await session([prepare(),run('teardown')]);assert.equal(out[1].status,'unsupported');});
 test('no wall clock fallback',async()=>{await assert.rejects(session([],wasm,{performance:undefined,preciseTime:()=>0}),/monotonic clock unavailable/);});
 test('describe advertises bounded support',async()=>{const [r]=await session([{method:'describe'}]);assert.deepEqual(r.description.abis,['core']);assert.deepEqual(r.description.scenarios,['compile','instantiate','first-call','steady']);assert.equal(r.description.capabilities.can_run_commands,undefined);assert.equal(r.description.capabilities.can_instantiate_separately,true);});
+
+function abortFixture({trap=false,badSignature=false}={}) {
+  const section=(id,data)=>[id,...leb(data.length),...data];
+  const text=s=>[s.length,...Buffer.from(s)];
+  const params=badSignature?[126,127,127,127]:[127,127,127,127];
+  const body=[0,...(trap?[65,0,65,0,65,0,65,0,16,0]:[]),32,0,11];
+  return Buffer.from([0,97,115,109,1,0,0,0,
+    ...section(1,[2,96,4,...params,0,96,1,126,1,126]),
+    ...section(2,[1,...text('env'),...text('abort'),0,0]),
+    ...section(3,[1,1]),...section(7,[1,...text('run'),0,1]),
+    ...section(10,[1,...leb(body.length),...body])]);
+}
+test('AssemblyScript abort import permits verified lifecycle execution',async()=>{
+  const bytes=abortFixture(),w={...work(),host_profile:'assemblyscript-abort-v1'};
+  for(const scenario of ['compile','instantiate','first-call','steady']) {
+    const out=await session([prepare(bytes,w),run(scenario)],bytes);
+    assert.equal(out[0].status,'ok');assert.equal(out[1].status,'ok');
+    assert.ok(out[1].samples.every(s=>s.verified));
+  }
+});
+test('AssemblyScript abort throws and cannot yield verified samples',async()=>{
+  const bytes=abortFixture({trap:true}),w={...work(),host_profile:'assemblyscript-abort-v1'};
+  const out=await session([prepare(bytes,w),run('first-call')],bytes);
+  assert.equal(out[0].status,'ok');assert.equal(out[1].status,'error');
+  assert.match(out[1].reason,/AssemblyScript abort/);assert.equal(out[1].samples,undefined);
+});
+test('AssemblyScript abort rejects wrong signature and undeclared profile',async()=>{
+  const bad=abortFixture({badSignature:true}),w={...work(),host_profile:'assemblyscript-abort-v1'};
+  assert.equal((await session([prepare(bad,w)],bad))[0].status,'unsupported');
+  const bytes=abortFixture();assert.equal((await session([prepare(bytes,work())],bytes))[0].status,'unsupported');
+});

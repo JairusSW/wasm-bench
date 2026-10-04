@@ -114,8 +114,12 @@
       if (id === 1) types = vector(() => { if (byte() !== 96) unsupported('non-function type unsupported'); return {params: vector(byte), results: vector(byte)}; });
       if (id === 2) vector(() => {
         const module = text(), importName = text(), kind = byte();
-        if (module !== 'wasmbench' || importName !== 'identity' || kind !== 0) unsupported('only wasmbench.identity function imports are supported');
-        functions.push(u32()); return null;
+        if (kind !== 0) unsupported('host imports must be functions');
+        const typeIndex = u32(), importedType = types[typeIndex];
+        const identity = module === 'wasmbench' && importName === 'identity' && importedType?.params.length === 1 && importedType.params[0] === 127 && importedType.results.length === 1 && importedType.results[0] === 127;
+        const abort = module === 'env' && importName === 'abort' && importedType?.params.length === 4 && importedType.params.every(x => x === 127) && importedType.results.length === 0;
+        if (!identity && !abort) unsupported('host import name or signature mismatch');
+        functions.push(typeIndex); return null;
       });
       if (id === 3) functions.push(...vector(u32));
       if (id === 7) vector(() => { const exportName = text(), kind = byte(), index = u32(); if (exportName === name && kind === 0) target = index; return null; });
@@ -160,7 +164,9 @@
     return target;
   }
   function importsFor(workload) {
-    return workload.host_profile === 'identity-v1' ? {wasmbench:{identity:value=>value}} : {};
+    if (workload.host_profile === 'identity-v1') return {wasmbench:{identity:value=>value}};
+    if (workload.host_profile === 'assemblyscript-abort-v1') return {env:{abort:()=>{throw new WebAssembly.RuntimeError('AssemblyScript abort');}}};
+    return {};
   }
   function verify(result, target) {
     const w = prep.workload;
@@ -184,7 +190,7 @@
       runtime_version: deno ? Deno.version.v8 : option('runtime-version') || (option('binary-sha256') ? 'binary-sha256:' + option('binary-sha256') : 'unreported'),
       embedding: deno ? 'Deno WebAssembly API' : runtime + ' standalone shell WebAssembly API',
       backend, build: deno ? 'Deno ' + Deno.version.deno : 'binary-sha256:' + option('binary-sha256'),
-      effective_configuration:{clock:hostClock?'std::chrono::steady_clock':'performance.now monotonic', compilation_policy:'WebAssembly.Module API return; lazy/background compilation and engine caches uncontrolled; no materialization claim', reset_policy:'fresh instance per lifecycle sample; stateless steady reuses one instance', release_policy:'drop JS references only; GC and physical reclamation uncontrolled; no forced GC',
+      effective_configuration:{clock:hostClock?'std::chrono::steady_clock':'performance.now monotonic', compilation_policy:'WebAssembly.Module API return; lazy/background compilation and engine caches uncontrolled; no materialization claim', reset_policy:'fresh instance per lifecycle sample; stateless steady reuses one instance', release_policy:'drop JS references only; GC and physical reclamation uncontrolled; no forced GC', host_import_policy:'Only wasmbench.identity (i32)->i32 or env.abort (i32,i32,i32,i32)->(); abort throws a guest RuntimeError; exact declared profile and signature required',
         ...(runtime==='spidermonkey'&&tierMode==='ion-only'?{wasm_compiler:'Ion only',tiering:'baseline disabled; Ion selected at compile time',flags:'--wasm-compiler=ion'}:{}),
         ...(runtime==='deno'&&tierMode==='optimizing-only'?{compiler_mode:'optimizing-only',tiering:'no Liftoff; eager optimizing compilation; tier-up disabled',flags:'--allow-natives-syntax --no-liftoff --no-wasm-tier-up --no-wasm-lazy-compilation',compiler_mode_probe:JSON.stringify(tierProbe)}:{}),
         ...(runtime==='jsc'&&tierMode==='omg-eager'?{tiering:'IPInt → BBQ → OMG tier-up forced after warmup; synchronous OMG compilation',warmup_minimum:'2',flags:'thresholdForBBQOptimizeAfterWarmUp=1 thresholdForBBQOptimizeSoon=1 thresholdForOMGOptimizeAfterWarmUp=1 thresholdForOMGOptimizeSoon=1 useConcurrentJIT=false numberOfWasmCompilerThreads=0',tier_probe:JSON.stringify(tierProbe)}:{})},
@@ -196,12 +202,13 @@
     if (req.method === 'prepare') {
       prep = bytes = signature = undefined;
       const p = req.prepare, w = p?.workload;
-      if (!w || !['timing','memory'].includes(p.profile) || w.abi !== 'core' || !['stateless','fresh_instance_per_sample'].includes(w.reset) || w.oracle?.kind !== 'exact_u64' || !Array.isArray(w.oracle.expected) || !w.export || (w.host_profile && w.host_profile !== 'identity-v1') || w.command || w.vectors || w.density || w.checkpoint || w.continuation || w.process_snapshot || w.guest_density || w.snapshot_density || w.oracle.float || w.oracle.expected_trap) unsupported('only core integer scalar timing/memory contracts with the identity-v1 host callback are supported');
+      if (!w || !['timing','memory'].includes(p.profile) || w.abi !== 'core' || !['stateless','fresh_instance_per_sample'].includes(w.reset) || w.oracle?.kind !== 'exact_u64' || !Array.isArray(w.oracle.expected) || !w.export || (w.host_profile && !['identity-v1','assemblyscript-abort-v1'].includes(w.host_profile)) || w.command || w.vectors || w.density || w.checkpoint || w.continuation || w.process_snapshot || w.guest_density || w.snapshot_density || w.oracle.float || w.oracle.expected_trap) unsupported('only core integer scalar timing/memory contracts with identity-v1 or assemblyscript-abort-v1 imports are supported');
       const data = readBytes(p.artifact);
       if (sha256(data) !== p.artifact_sha256) throw Error('artifact digest mismatch');
       const probeModule = new WebAssembly.Module(data);
       const moduleImports = WebAssembly.Module.imports(probeModule);
-      if (w.host_profile === 'identity-v1' ? moduleImports.length !== 1 || moduleImports[0].module !== 'wasmbench' || moduleImports[0].name !== 'identity' || moduleImports[0].kind !== 'function' : moduleImports.length !== 0) unsupported('module imports do not match the declared host-call profile');
+      const expectedImport = w.host_profile === 'identity-v1' ? ['wasmbench','identity'] : w.host_profile === 'assemblyscript-abort-v1' ? ['env','abort'] : null;
+      if (expectedImport ? moduleImports.length !== 1 || moduleImports[0].module !== expectedImport[0] || moduleImports[0].name !== expectedImport[1] || moduleImports[0].kind !== 'function' : moduleImports.length !== 0) unsupported('module imports do not match the declared host-call profile');
       const sig = numericSignature(data, w.export);
       if (w.initialize) {
         const init = numericSignature(data,w.initialize);

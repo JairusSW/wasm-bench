@@ -173,6 +173,14 @@ func commandDigests(c *protocol.CommandContract, exit uint32, stdout, stderr []b
 		result.StdoutOracleSHA256 = hex.EncodeToString(h[:])
 	}
 	if err := c.Verify(result); err != nil {
+		if len(stderr) > 0 {
+			const diagnosticLimit = 1024
+			preview := stderr
+			if len(preview) > diagnosticLimit {
+				preview = preview[:diagnosticLimit]
+			}
+			return protocol.CommandResult{}, fmt.Errorf("%w; stderr prefix=%q", err, preview)
+		}
 		return protocol.CommandResult{}, err
 	}
 	return result, nil

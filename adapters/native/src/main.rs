@@ -180,11 +180,9 @@ impl Adapter {
                     description["description"]["effective_configuration"]["vector_policy"] = json!(
                         "Fresh instance per ordered vector sequence; input writes and exact output verification excluded from sum of timed export lookups, integer marshalling and embedding calls; one operation per complete sequence; lifecycle windows match scalar API phases"
                     );
-                    if !cfg!(feature = "wavm") {
-                        description["description"]["effective_configuration"]["assemblyscript_abort_policy"] = json!(
-                            "Only env.abort with four i32 parameters and no results; imported callback creates a real guest trap; no other host imports"
-                        );
-                    }
+                    description["description"]["effective_configuration"]["assemblyscript_abort_policy"] = json!(
+                        "Only env.abort with four i32 parameters and no results; imported callback creates a real guest trap; identity host imports use their separately validated profile"
+                    );
                 }
                 if cfg!(feature = "wavm") {
                     description["description"]["capabilities"]["can_measure_native_code_size"] =
@@ -207,7 +205,8 @@ impl Adapter {
                     || cfg!(feature = "wavm"))
                     && w["oracle"]["kind"] == "exact_vectors";
                 let assemblyscript = (cfg!(feature = "wasmer_llvm")
-                    || cfg!(feature = "wasmer_singlepass"))
+                    || cfg!(feature = "wasmer_singlepass")
+                    || cfg!(feature = "wavm"))
                     && w["host_profile"] == "assemblyscript-abort-v1";
                 let identity_host = (cfg!(feature = "wasmi")
                     || cfg!(feature = "wasmer_llvm")

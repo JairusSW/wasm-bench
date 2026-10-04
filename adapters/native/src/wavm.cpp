@@ -21,6 +21,18 @@ static wasm_extern_t* find(Instance* i,const char* name){
 static wasm_func_t* function(Instance* i,const char* name){auto f=wasm_extern_as_func(find(i,name));if(!f)throw std::runtime_error("export is not a function");return f;}
 static uint8_t type(wasm_valtype_t* v){switch(wasm_valtype_kind(v)){case WASM_I32:return 0x7f;case WASM_I64:return 0x7e;default:return 0;}}
 static wasm_trap_t* host_identity(const wasm_val_t args[],wasm_val_t results[]){results[0].i32=args[0].i32;return nullptr;}
+static thread_local wasm_compartment_t* callback_compartment=nullptr;
+struct CallbackScope {
+    wasm_compartment_t* prior;
+    explicit CallbackScope(wasm_compartment_t* current):prior(callback_compartment){callback_compartment=current;}
+    ~CallbackScope(){callback_compartment=prior;}
+};
+static wasm_trap_t* assemblyscript_abort(const wasm_val_t[],wasm_val_t[]){
+    static const char message[]="AssemblyScript abort";
+    auto* trap=wasm_trap_new(callback_compartment,message,sizeof(message)-1);
+    if(!trap)std::terminate();
+    return trap;
+}
 extern "C" {
 // The diagnostic owns its returned object separately from timed C API modules.
 int wb_object_code(const uint8_t* bytes,size_t size,uint8_t** output,size_t* output_size){WB_TRY{
@@ -52,10 +64,15 @@ void* wb_instance_new(void* e,void* m){WB_TRY{
         // The typed cast is borrowed from imported.type. Delete that owner once
         // below; deleting both the cast and its owner double-frees WAVM metadata.
         const auto* functionType=wasm_externtype_as_functype_const(imported.type);
-        if(!identity||!functionType||wasm_functype_num_params(functionType)!=1||wasm_functype_num_results(functionType)!=1||wasm_valtype_kind(wasm_functype_param(functionType,0))!=WASM_I32||wasm_valtype_kind(wasm_functype_result(functionType,0))!=WASM_I32){wasm_externtype_delete(imported.type);throw std::runtime_error("unsupported: only wasmbench.identity(i32)->i32 is bound");}
-        auto host=wasm_func_new(i->compartment,functionType,host_identity,"wasmbench.identity");
+        const bool abort=imported.num_module_bytes==3&&!memcmp(imported.module,"env",3)&&imported.num_name_bytes==5&&!memcmp(imported.name,"abort",5);
+        bool validIdentity=identity&&functionType&&wasm_functype_num_params(functionType)==1&&wasm_functype_num_results(functionType)==1&&wasm_valtype_kind(wasm_functype_param(functionType,0))==WASM_I32&&wasm_valtype_kind(wasm_functype_result(functionType,0))==WASM_I32;
+        bool validAbort=abort&&functionType&&wasm_functype_num_params(functionType)==4&&wasm_functype_num_results(functionType)==0;
+        if(validAbort)for(size_t n=0;n<4;n++)validAbort=validAbort&&wasm_valtype_kind(wasm_functype_param(functionType,n))==WASM_I32;
+        if(!validIdentity&&!validAbort){wasm_externtype_delete(imported.type);throw std::runtime_error("unsupported: host import must match identity(i32)->i32 or env.abort(i32,i32,i32,i32)");}
+        auto host=validIdentity?wasm_func_new(i->compartment,functionType,host_identity,"wasmbench.identity"):wasm_func_new(i->compartment,functionType,assemblyscript_abort,"env.abort");
         wasm_externtype_delete(imported.type);if(!host)throw std::runtime_error("identity callback creation failed");functions.push_back(host);imports.push_back(wasm_func_as_extern(host));
     }
+    CallbackScope callbackScope(i->compartment);
     wasm_trap_t* trap=nullptr;i->value=wasm_instance_new(i->store,i->module,imports.data(),&trap,"wasmbench");
     for(auto* function:functions)wasm_func_delete(function);
     if(trap){wasm_trap_delete(trap);throw std::runtime_error("Wasm instantiation trap");}if(!i->value)throw std::runtime_error("instantiation failed");return i.release();
@@ -74,6 +91,7 @@ int wb_call(void* value,const char* name,const uint64_t* args,size_t na,uint64_t
     if(na!=wasm_functype_num_params(t.get())||nr!=wasm_functype_num_results(t.get()))throw std::runtime_error("signature arity mismatch");
     std::vector<wasm_val_t> p(na),r(nr);
     for(size_t k=0;k<na;k++){const auto kind=type(wasm_functype_param(t.get(),k));if(kind==0x7f)p[k].i32=static_cast<int32_t>(args[k]);else if(kind==0x7e)p[k].i64=static_cast<int64_t>(args[k]);else throw std::runtime_error("unsupported: integer parameters only");}
+    CallbackScope callbackScope(i->compartment);
     auto trap=wasm_func_call(i->store,f,p.data(),r.data());if(trap){wasm_trap_delete(trap);throw std::runtime_error("Wasm invocation trap");}
     for(size_t k=0;k<nr;k++){const auto kind=type(wasm_functype_result(t.get(),k));if(kind==0x7f)out[k]=static_cast<uint32_t>(r[k].i32);else if(kind==0x7e)out[k]=static_cast<uint64_t>(r[k].i64);else throw std::runtime_error("unsupported: integer results only");}return 0;
 }WB_CATCH(-1)}

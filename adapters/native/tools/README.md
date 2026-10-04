@@ -34,3 +34,26 @@ parser regression tests. It is not a workload and is never executed.
 
 `../tests/fixtures/wavm-return42-amd64.o` retains that ELF object, testing
 executable sections beyond the conventional `.text` name.
+
+## WASI embedding checks
+
+The private `wavm_wasi.h` helper uses WAVM's public WASI resolver, process,
+instance, and invocation APIs. `CommandInstance` keeps compilation separate
+from per-instance WASI setup and captures `proc_exit`. Its buffers retain output
+after guest descriptor closure and enforce output limits. The fixture filesystem
+permits reads and rejects mutation, parent traversal, and symlinks. This helper
+still needs the adapter protocol and command-oracle integration before collecting
+WASI workload measurements.
+
+The native tests use the same SDK as the adapter:
+
+```sh
+c++ -std=c++17 -DWAVM_API= -I"$WAVM_SDK/include" \\
+  -I"$WAVM_SDK/include/WAVM/Inline/xxhash" ../tests/wavm-wasi.cpp \\
+  -L"$WAVM_SDK/lib" -Wl,-rpath,"$WAVM_SDK/lib" -lWAVM -o wasi-test
+./wasi-test
+```
+
+Run the same build command with `wavm-readonly.cpp` or `wavm-stdio.cpp` to check
+filesystem and buffer behavior. All three checks passed on macOS arm64 and
+Linux amd64 with `nightly-2026-04-05`.

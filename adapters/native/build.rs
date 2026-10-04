@@ -46,6 +46,16 @@ fn main() {
         build.define("WAVM_API", Some(""));
     }
     if wasmer {
+        let receipt = sdk.join("receipt.json");
+        println!("cargo:rerun-if-changed={}", receipt.display());
+        let metadata = if receipt.exists() {
+            let text = std::fs::read_to_string(&receipt).expect("read SDK receipt");
+            assert!(text.len() <= 65536, "SDK receipt exceeds metadata budget");
+            text.replace(['\n', '\r'], "")
+        } else {
+            String::new()
+        };
+        println!("cargo:rustc-env=WB_SDK_RECEIPT_JSON={metadata}");
         build.define(
             "WB_WASMER_LLVM",
             Some(if runtime == "wasmer_llvm" { "1" } else { "0" }),

@@ -269,3 +269,25 @@ mod wasi {
 }
 #[cfg(feature = "wavm")]
 pub use wasi::WasiModule;
+
+#[cfg(any(feature = "wasmer_singlepass", feature = "wasmer_llvm"))]
+unsafe extern "C" {
+    fn wb_can_native_size() -> bool;
+    fn wb_native_size(module: *mut c_void, size: *mut usize) -> i32;
+}
+#[cfg(any(feature = "wasmer_singlepass", feature = "wasmer_llvm"))]
+pub fn can_native_size() -> bool {
+    unsafe { wb_can_native_size() }
+}
+#[cfg(any(feature = "wasmer_singlepass", feature = "wasmer_llvm"))]
+impl Module {
+    pub fn native_size(&self) -> Result<usize> {
+        let mut size = 0;
+        unsafe {
+            if wb_native_size(self.0.as_ptr(), &mut size) != 0 {
+                return Err(error());
+            }
+        }
+        Ok(size)
+    }
+}

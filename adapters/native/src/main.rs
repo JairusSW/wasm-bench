@@ -170,9 +170,21 @@ impl Adapter {
                     || cfg!(feature = "wasmer_singlepass")
                     || cfg!(feature = "wavm")
                 {
-                    if !cfg!(feature = "wavm") {
+                    #[cfg(any(feature = "wasmer_singlepass", feature = "wasmer_llvm"))]
+                    {
+                        if let Some(metadata) =
+                            option_env!("WB_SDK_RECEIPT_JSON").filter(|s| !s.is_empty())
+                        {
+                            description["description"]["effective_configuration"]["native_sdk_receipt"] =
+                                serde_json::from_str(metadata)?;
+                        }
                         description["description"]["capabilities"]["can_code_profile"] =
-                            json!(false);
+                            json!(embedding::can_native_size());
+                        description["description"]["capabilities"]["can_measure_native_code_size"] =
+                            json!(embedding::can_native_size());
+                        description["description"]["effective_configuration"]["native_code_policy"] = json!(
+                            "Optional SDK C ABI getter delegates to public sys_artifact/finished_function_extents; complete defined-function coverage required; excludes call trampolines; serialized artifact bytes are not reported as native code"
+                        );
                     }
                     description["description"]["capabilities"]["can_run_vectors"] = json!(true);
                     for name in ["compile", "instantiate", "first-call"] {
@@ -200,6 +212,24 @@ impl Adapter {
                         json!(true);
                 }
                 Ok(description)
+            }
+            #[cfg(any(feature = "wasmer_singlepass", feature = "wasmer_llvm"))]
+            "inspect" => {
+                ensure!(self.prep.is_some(), "prepare required");
+                ensure!(
+                    embedding::can_native_size(),
+                    "unsupported: SDK native-size getter unavailable"
+                );
+                let engine = embedding::Engine::new()?;
+                let module = engine.compile(&self.bytes)?;
+                let size = module.native_size()?;
+                ensure!(
+                    size as u64 <= (1u64 << 53),
+                    "native size exceeds exact numeric range"
+                );
+                Ok(
+                    json!({"diagnostics":[{"metric":"native.code_size","definition_version":1,"status":"available","value":size,"unit":"bytes","scope":"compiled_module","phase":"compile","collector":"Wasmer/sys_artifact/finished_function_extents","collector_version":embedding::version(),"quality":"engine_reported","profile":"code","normalization_denominator":"module","reason":"Sum of all defined-function native extents; excludes call trampolines, metadata and serialized artifact headers. Complete byte export unavailable."},{"metric":"native.code_export","definition_version":1,"status":"unavailable","unit":"bytes","scope":"compiled_module","phase":"compile","collector":"Wasmer/sys_artifact/finished_function_extents","collector_version":embedding::version(),"quality":"engine_reported","profile":"code","normalization_denominator":"module","reason":"Native function lengths captured; native image byte export is not configured"}]}),
+                )
             }
             #[cfg(feature = "wavm")]
             "inspect" => {
@@ -242,9 +272,14 @@ impl Adapter {
                     || cfg!(feature = "wamr")
                     || cfg!(feature = "wavm"))
                     && w["host_profile"] == "identity-v1";
+                #[cfg(any(feature = "wasmer_singlepass", feature = "wasmer_llvm"))]
+                let native_size_profile = embedding::can_native_size() && p["profile"] == "code";
+                #[cfg(not(any(feature = "wasmer_singlepass", feature = "wasmer_llvm")))]
+                let native_size_profile = false;
                 ensure!(
                     (["timing", "memory"].contains(&field(p, "profile")?)
-                        || (cfg!(feature = "wavm") && p["profile"] == "code"))
+                        || (cfg!(feature = "wavm") && p["profile"] == "code")
+                        || native_size_profile)
                         && w["abi"] == "core"
                         && ["stateless", "fresh_instance_per_sample"].contains(&field(w, "reset")?)
                         && (w["oracle"]["kind"] == "exact_u64" || vector_contract)

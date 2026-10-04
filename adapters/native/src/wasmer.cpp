@@ -2,6 +2,7 @@
 #include "embedding.h"
 #include <wasmer.h>
 #include <memory>
+#include <dlfcn.h>
 
 static std::runtime_error last_error(const char* phase) {
     int length=wasmer_last_error_length();
@@ -51,7 +52,16 @@ static wasm_trap_t* identity(void*,const wasm_val_vec_t* args,wasm_val_vec_t* re
     if(args->size!=1||results->size!=1||args->data[0].kind!=WASM_I32)return nullptr;
     results->data[0].kind=WASM_I32;results->data[0].of.i32=args->data[0].of.i32;return nullptr;
 }
+using NativeSizeGetter=bool(*)(const wasm_module_t*,size_t*);
+static NativeSizeGetter native_size_getter(){return reinterpret_cast<NativeSizeGetter>(dlsym(RTLD_DEFAULT,"wasmbench_module_native_function_size"));}
 extern "C" {
+bool wb_can_native_size(){return native_size_getter()!=nullptr;}
+int wb_native_size(void* module,size_t* size){WB_TRY{
+    auto getter=native_size_getter();
+    if(!getter)throw std::runtime_error("unsupported: selected Wasmer SDK has no native-size getter");
+    if(!getter(static_cast<const wasm_module_t*>(module),size))throw std::runtime_error("native function extents unavailable or incomplete");
+    return 0;
+}WB_CATCH(-1)}
 const char* wb_error(){return wb_last_error.c_str();}
 const char* wb_version(){return wasmer_version();}
 void* wb_engine_new(){WB_TRY{

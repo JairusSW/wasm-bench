@@ -149,3 +149,26 @@ impl Instance {
         Ok(unsafe { std::slice::from_raw_parts_mut(p, n) })
     }
 }
+
+#[cfg(feature = "wavm")]
+pub fn object_code(bytes: &[u8]) -> Result<Vec<u8>> {
+    unsafe extern "C" {
+        fn wb_object_code(
+            bytes: *const u8,
+            size: usize,
+            output: *mut *mut u8,
+            output_size: *mut usize,
+        ) -> i32;
+        fn wb_object_delete(bytes: *mut u8);
+    }
+    let mut output = std::ptr::null_mut();
+    let mut size = 0;
+    unsafe {
+        if wb_object_code(bytes.as_ptr(), bytes.len(), &mut output, &mut size) != 0 {
+            return Err(error());
+        }
+        let object = std::slice::from_raw_parts(output, size).to_vec();
+        wb_object_delete(output);
+        Ok(object)
+    }
+}

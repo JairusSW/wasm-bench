@@ -1,3 +1,5 @@
+#[cfg(feature = "wavm")]
+mod native_object;
 use anyhow::{Result, bail, ensure};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -172,7 +174,16 @@ impl Adapter {
                         "Only env.abort with four i32 parameters and no results; imported callback creates a real guest trap; no other host imports"
                     );
                 }
+                if cfg!(feature = "wavm") {
+                    description["description"]["capabilities"]["can_measure_native_code_size"] =
+                        json!(true);
+                }
                 Ok(description)
+            }
+            #[cfg(feature = "wavm")]
+            "inspect" => {
+                ensure!(self.prep.is_some(), "prepare required");
+                native_object::inspect(&embedding::object_code(&self.bytes)?, &embedding::version())
             }
             "prepare" => {
                 self.prep = None;
@@ -193,7 +204,8 @@ impl Adapter {
                     || cfg!(feature = "wavm"))
                     && w["host_profile"] == "identity-v1";
                 ensure!(
-                    ["timing", "memory"].contains(&field(p, "profile")?)
+                    (["timing", "memory"].contains(&field(p, "profile")?)
+                        || (cfg!(feature = "wavm") && p["profile"] == "code"))
                         && w["abi"] == "core"
                         && ["stateless", "fresh_instance_per_sample"].contains(&field(w, "reset")?)
                         && (w["oracle"]["kind"] == "exact_u64" || vector_contract)

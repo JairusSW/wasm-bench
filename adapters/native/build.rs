@@ -38,6 +38,10 @@ fn main() {
         .std("c++17")
         .include(sdk.join("include"))
         .file(format!("src/{sdk_runtime}.cpp"));
+    if runtime == "wavm" {
+        build.include(sdk.join("include/WAVM/Inline/xxhash"));
+        build.define("WAVM_API", Some(""));
+    }
     if wasmer {
         build.define(
             "WB_WASMER_LLVM",

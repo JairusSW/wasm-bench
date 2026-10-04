@@ -1,6 +1,7 @@
 #include "embedding.h"
 #include <WAVM/wavm-c/wavm-c.h>
 #include <memory>
+#include <WAVM/Runtime/Runtime.h>
 struct Engine { wasm_engine_t* value=wasm_engine_new(); ~Engine(){if(value)wasm_engine_delete(value);} };
 struct Instance {
     wasm_compartment_t* compartment=nullptr;
@@ -21,6 +22,16 @@ static wasm_func_t* function(Instance* i,const char* name){auto f=wasm_extern_as
 static uint8_t type(wasm_valtype_t* v){switch(wasm_valtype_kind(v)){case WASM_I32:return 0x7f;case WASM_I64:return 0x7e;default:return 0;}}
 static wasm_trap_t* host_identity(const wasm_val_t args[],wasm_val_t results[]){results[0].i32=args[0].i32;return nullptr;}
 extern "C" {
+// The diagnostic owns its returned object separately from timed C API modules.
+int wb_object_code(const uint8_t* bytes,size_t size,uint8_t** output,size_t* output_size){WB_TRY{
+    WAVM::Runtime::ModuleRef module;
+    if(!WAVM::Runtime::loadBinaryModule(bytes,size,module))throw std::runtime_error("object compilation failed");
+    auto object=WAVM::Runtime::getObjectCode(module);
+    auto result=std::make_unique<uint8_t[]>(object.size());
+    memcpy(result.get(),object.data(),object.size());
+    *output_size=object.size();*output=result.release();return 0;
+}WB_CATCH(-1)}
+void wb_object_delete(uint8_t* bytes){delete[] bytes;}
 const char* wb_error(){return wb_last_error.c_str();}
 const char* wb_version(){return WB_VERSION;}
 void* wb_engine_new(){WB_TRY{auto e=std::make_unique<Engine>();if(!e->value)throw std::runtime_error("engine creation failed");return e.release();}WB_CATCH(nullptr)}

@@ -2,14 +2,15 @@
 
 `wavm-object.cpp` compiles a core module through the public WAVM C++ API and
 writes `Runtime::getObjectCode()` to disk. It never instantiates or runs the
-workload. This is a diagnostic helper; it is not yet wired into the collector.
+workload. The WAVM adapter also uses this API in its code-profile `inspect` request,
+reporting executable-section size with the relocatable-object scope.
 
 Build against the exact SDK used by the timing adapter. WAVM's installed C++
-headers also require the matching source release's `Inline/xxhash` directory:
+headers also require its installed `Inline/xxhash` include directory:
 
 ```sh
 c++ -std=c++17 -DWAVM_API= wavm-object.cpp \
-  -I"$WAVM_SDK/include" -I"$WAVM_SOURCE/Include/WAVM/Inline/xxhash" \
+  -I"$WAVM_SDK/include" -I"$WAVM_SDK/include/WAVM/Inline/xxhash" \
   -L"$WAVM_SDK/lib" -Wl,-rpath,"$WAVM_SDK/lib" -lWAVM -o wavm-object
 ./wavm-object workload.wasm workload.o
 ```
@@ -25,3 +26,6 @@ Verified on macOS arm64 with `nightly-2026-04-05`: the host-to-Wasm call fixture
 produced a 1,696-byte Mach-O object with a 48-byte `__text` section, independently
 checked with `file` and `otool -l`. The API uses the same default `FeatureSpec`
 as this release's C API engine. Linux ELF extraction still needs verification.
+
+`../tests/fixtures/wavm-call-arm64.o` retains that exact diagnostic object for
+parser regression tests. It is not a workload and is never executed.

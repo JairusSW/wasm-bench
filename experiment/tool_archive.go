@@ -103,7 +103,7 @@ func archiveTools(l Lock, runner, out string) error {
 		if entry.Runtime == -1 {
 			source = runner
 		}
-		if err := copyTool(source, filepath.Join(out, entry.Relative), entry.SHA256, false); err != nil {
+		if err := linkCachedTool(source, filepath.Join(out, entry.Relative), entry.SHA256); err != nil {
 			return err
 		}
 	}

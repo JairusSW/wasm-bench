@@ -13,6 +13,7 @@ import (
 
 func archiveFixture(t *testing.T) (string, Lock, string) {
 	t.Helper()
+	t.Setenv("WASMBENCH_TOOL_CACHE", t.TempDir())
 	source := t.TempDir()
 	write := func(name, data string) string {
 		path := filepath.Join(source, name)

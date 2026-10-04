@@ -7,16 +7,32 @@ a plan or run to retain exact tool bytes for later restoration. Without an archi
 tools are still hash-pinned but must remain available separately for replay.
 Library callers opt in with `Lock.ArchiveTools`.
 
-Before workload admission or adapter execution, the runner copies its own exact
-executable, every declared adapter file, and the independent analyzer into the
-bundle's `tools/` directory. Each copy must match its locked SHA-256. These are
-regular, non-executable, read-only copies, not symlinks to mutable installations.
-They are covered by the bundle seal. Offline loading also checks their hashes
-against the lock, so resealing a changed tool does not make it match the plan.
-This increases disk use, especially for shared-library runtimes and multiple
-configurations of the same runtime. On macOS, tool/restoration and primary report
-copies use independent copy-on-write files where supported, with ordinary copies
-as the fallback. They are never hardlinks to mutable installations.
+Before workload admission or adapter execution, the runner retains its exact
+executable, declared adapter files and independent analyzer in one immutable,
+content-addressed cache. The default is the OS user cache directory under
+`wasm-bench/tools/sha256`; set `WASMBENCH_TOOL_CACHE` to choose its location.
+Each run's `tools/` paths and new report snapshots are regular read-only hard
+links to those cached bytes, rather than per-report copies. Identical tools across
+runtimes and runs occupy one file. Cache and experiment outputs must be on the
+same filesystem; a failed hard link reports how to select a suitable cache.
+
+Every retained file is still covered by the bundle seal and checked against its
+locked SHA-256. Cache hits reject changed source bytes or corrupt cache blobs.
+These links never point to mutable installations. Do not modify cached files or
+archived `tools/` files in place: hard links share an inode. Normal adapter
+rebuilds write separate installation files. Portable archives retain exact bytes
+and can be restored without the original cache. Removing a cache directory does
+not invalidate existing hard links. Other report evidence remains independently
+copied (using copy-on-write on macOS where available).
+
+## Reusing Wago adapter builds
+
+Wago builds use the same cache root under `builds/wago/`. The build key includes
+the selected revision, source contents, adapter and harness Go/assembly inputs,
+dependency declarations and stable Go toolchain settings. Repeated collection
+reuses the recorded binary only after checking its digest. Changed source,
+adapter code or toolchain settings produce a new build. The installed executable
+is replaced atomically; existing reports continue to reference their exact tools.
 
 ## Compact existing local archives
 

@@ -49,10 +49,12 @@ func BuildWago(ctx context.Context, root, source string) error {
 		return e
 	}
 	identity := strings.TrimSpace(string(revision)) + "/source-" + corpus.Hash([]byte(inputs.String()))
-	cmd = exec.CommandContext(ctx, "go", "build", "-mod=mod", "-modfile="+modfile, "-trimpath", "-ldflags=-X main.sourceRevision="+identity, "-o", NativeExecutable(filepath.Join(root, "bin", "adapter-wago")), ".")
-	cmd.Dir = filepath.Join(root, "adapters", "wago")
-	cmd.Env = append(os.Environ(), "GOWORK=off")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return cachedWagoBuild(ctx, root, source, identity, content, func(output string) error {
+		cmd = exec.CommandContext(ctx, "go", "build", "-mod=mod", "-modfile="+modfile, "-trimpath", "-ldflags=-X main.sourceRevision="+identity, "-o", output, ".")
+		cmd.Dir = filepath.Join(root, "adapters", "wago")
+		cmd.Env = append(os.Environ(), "GOWORK=off")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
+	})
 }

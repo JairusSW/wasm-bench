@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 func WriteJSON(path string, v any) error {
@@ -94,6 +95,15 @@ func CopyTree(src, dst string) error {
 		}
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("cannot copy non-regular bundle file: %s", path)
+		}
+		// Immutable archived tools remain links to the shared cache in report
+		// snapshots. Mutable evidence still receives an independent copy.
+		if strings.HasPrefix(filepath.ToSlash(rel), "tools/") && info.Mode().Perm() == 0444 {
+			digest, err := DigestFile(path)
+			if err != nil {
+				return err
+			}
+			return linkCachedTool(path, target, digest)
 		}
 		if err := CopyExclusive(path, target); err != nil {
 			return err

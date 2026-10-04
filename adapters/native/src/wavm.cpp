@@ -3,6 +3,7 @@
 #include <memory>
 #include <WAVM/Runtime/Runtime.h>
 #include "wavm_wasi.h"
+#include <WAVM/WASM/WASM.h>
 struct Engine { wasm_engine_t* value=wasm_engine_new(); ~Engine(){if(value)wasm_engine_delete(value);} };
 struct Instance {
     wasm_compartment_t* compartment=nullptr;
@@ -47,7 +48,11 @@ int wb_object_code(const uint8_t* bytes,size_t size,uint8_t** output,size_t* out
 void wb_object_delete(uint8_t* bytes){delete[] bytes;}
 void* wb_wasi_module_new(const uint8_t* bytes,size_t size){WB_TRY{
     auto module=std::make_unique<WAVM::Runtime::ModuleRef>();
-    if(!WAVM::Runtime::loadBinaryModule(bytes,size,*module))throw std::runtime_error("WASI compilation failed");
+    WAVM::WASM::LoadError error;
+    if(!WAVM::Runtime::loadBinaryModule(bytes,size,*module,WAVM::IR::FeatureSpec(),&error)){
+        if(error.message.find("unknown section ID (13")!=std::string::npos)throw std::runtime_error("unsupported: WAVM SDK loader does not decode modern exception tag section 13");
+        throw std::runtime_error("WASI compilation failed: "+error.message);
+    }
     return module.release();
 }WB_CATCH(nullptr)}
 void wb_wasi_module_delete(void* module){delete static_cast<WAVM::Runtime::ModuleRef*>(module);}

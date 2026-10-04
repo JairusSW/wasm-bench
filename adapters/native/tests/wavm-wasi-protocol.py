@@ -11,12 +11,12 @@ def leb(n):
 def name(s):
     data=s.encode();return leb(len(data))+data
 def section(i,data):return bytes([i])+leb(len(data))+data
-def module(write=False):
+def module(write=False, modern_tag=False):
     types=b'\x02'+(b'\x60\x04\x7f\x7f\x7f\x7f\x01\x7f' if write else b'\x60\x01\x7f\x00')+b'\x60\x00\x00'
     imported=b'\x01'+name('wasi_snapshot_preview1')+name('fd_write' if write else 'proc_exit')+b'\x00\x00'
     exports=b'\x02'+name('memory')+b'\x02\x00'+name('_start')+b'\x00\x01'
     body=b'\x00'+(b'\x41\x01\x41\x00\x41\x01\x41\x10\x10\x00\x1a' if write else b'\x41\x07\x10\x00')+b'\x0b'
-    result=b'\0asm\x01\0\0\0'+section(1,types)+section(2,imported)+section(3,b'\x01\x01')+section(5,b'\x01\x00\x01')+section(7,exports)+section(10,b'\x01'+leb(len(body))+body)
+    result=b'\0asm\x01\0\0\0'+section(1,types)+section(2,imported)+section(3,b'\x01\x01')+section(5,b'\x01\x00\x01')+(section(13,b"\x01\x00\x00") if modern_tag else b"")+section(7,exports)+section(10,b'\x01'+leb(len(body))+body)
     if write:
         data=b'\x08\0\0\0\x02\0\0\0ok'
         result+=section(11,b'\x01\x00\x41\x00\x0b'+leb(len(data))+data)
@@ -38,7 +38,8 @@ with tempfile.TemporaryDirectory(prefix='wasmbench-wavm-wasi-') as directory:
             if response['status']=='phase':
                 process.stdin.write(json.dumps({'version':1,'id':request_id,'method':'continue'})+'\n');process.stdin.flush()
             else:return response
-    assert request('describe')['description']['capabilities']['can_run_commands'] is True
+    description=request('describe')['description']
+    assert description['capabilities']['can_run_commands'] is True
     for write in [False,True]:
         artifact=Path(directory)/('write.wasm' if write else 'exit.wasm');artifact.write_bytes(module(write))
         command={'argv':['test'],'exit_code':0 if write else 7,'stdout_sha256':hashlib.sha256(b'ok' if write else b'').hexdigest(),'output_limit_bytes':1024}
@@ -69,5 +70,11 @@ with tempfile.TemporaryDirectory(prefix='wasmbench-wavm-wasi-') as directory:
             assert request('prepare',prepare=preparation)['status']=='ok'
             response=request('run',run={'scenario':'steady','samples':1,'operations':1,'warmup':0})
             assert response['status']=='error' and 'output limit' in response['reason'],response
+    if description['runtime_version'].startswith('nightly-2026-04-05'):
+        artifact=Path(directory)/'modern-tag.wasm';artifact.write_bytes(module(modern_tag=True))
+        preparation['artifact']=str(artifact);preparation['artifact_sha256']=hashlib.sha256(artifact.read_bytes()).hexdigest()
+        assert request('prepare',prepare=preparation)['status']=='ok'
+        response=request('run',run={'scenario':'compile','samples':1,'operations':1,'warmup':0})
+        assert response['status']=='unsupported' and 'section 13' in response['reason'],response
     request('close');process.wait(timeout=5);assert process.returncode==0
 print('WAVM WASI protocol passed: timing, memory barriers, code, exit/output oracles, output cap')

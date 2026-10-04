@@ -16,7 +16,11 @@ use wasmi as embedding;
 mod ffi;
 #[cfg(not(feature = "wasmi"))]
 use ffi as embedding;
-#[cfg(any(feature = "wasmer_llvm", feature = "wasmer_singlepass"))]
+#[cfg(any(
+    feature = "wasmer_llvm",
+    feature = "wasmer_singlepass",
+    feature = "wavm"
+))]
 mod vectors;
 const RUNTIME: &str = env!("WB_RUNTIME");
 fn scenarios() -> Vec<&'static str> {
@@ -160,8 +164,14 @@ impl Adapter {
                 if cfg!(feature = "wasmer_llvm") || cfg!(feature = "wasmer_singlepass") {
                     description["description"]["validator_features"] = json!({"namespace":"wasmparser/0.251.0","evidence":"Pinned Wasmer 7.3.0 compiler configuration and explicit C API feature subset; Singlepass SIMD disabled after corpus instruction lowering failures; enabled validation is not a guarantee of complete backend support","supported":{"GC":false,"FUNCTION_REFERENCES":false,"MEMORY64":false,"STACK_SWITCHING":false,"SIMD":cfg!(feature="wasmer_llvm"),"RELAXED_SIMD":cfg!(feature="wasmer_llvm"),"EXCEPTIONS":cfg!(feature="wasmer_llvm"),"LEGACY_EXCEPTIONS":cfg!(feature="wasmer_llvm"),"TAIL_CALL":cfg!(feature="wasmer_llvm")}});
                 }
-                if cfg!(feature = "wasmer_llvm") || cfg!(feature = "wasmer_singlepass") {
-                    description["description"]["capabilities"]["can_code_profile"] = json!(false);
+                if cfg!(feature = "wasmer_llvm")
+                    || cfg!(feature = "wasmer_singlepass")
+                    || cfg!(feature = "wavm")
+                {
+                    if !cfg!(feature = "wavm") {
+                        description["description"]["capabilities"]["can_code_profile"] =
+                            json!(false);
+                    }
                     description["description"]["capabilities"]["can_run_vectors"] = json!(true);
                     for name in ["compile", "instantiate", "first-call"] {
                         description["description"]["capabilities"]
@@ -170,9 +180,11 @@ impl Adapter {
                     description["description"]["effective_configuration"]["vector_policy"] = json!(
                         "Fresh instance per ordered vector sequence; input writes and exact output verification excluded from sum of timed export lookups, integer marshalling and embedding calls; one operation per complete sequence; lifecycle windows match scalar API phases"
                     );
-                    description["description"]["effective_configuration"]["assemblyscript_abort_policy"] = json!(
-                        "Only env.abort with four i32 parameters and no results; imported callback creates a real guest trap; no other host imports"
-                    );
+                    if !cfg!(feature = "wavm") {
+                        description["description"]["effective_configuration"]["assemblyscript_abort_policy"] = json!(
+                            "Only env.abort with four i32 parameters and no results; imported callback creates a real guest trap; no other host imports"
+                        );
+                    }
                 }
                 if cfg!(feature = "wavm") {
                     description["description"]["capabilities"]["can_measure_native_code_size"] =
@@ -191,7 +203,8 @@ impl Adapter {
                 let p = &req["prepare"];
                 let w = &p["workload"];
                 let vector_contract = (cfg!(feature = "wasmer_llvm")
-                    || cfg!(feature = "wasmer_singlepass"))
+                    || cfg!(feature = "wasmer_singlepass")
+                    || cfg!(feature = "wavm"))
                     && w["oracle"]["kind"] == "exact_vectors";
                 let assemblyscript = (cfg!(feature = "wasmer_llvm")
                     || cfg!(feature = "wasmer_singlepass"))
@@ -241,7 +254,11 @@ impl Adapter {
                 );
                 values(&w["args"])?;
                 values(&w["oracle"]["expected"])?;
-                #[cfg(any(feature = "wasmer_llvm", feature = "wasmer_singlepass"))]
+                #[cfg(any(
+                    feature = "wasmer_llvm",
+                    feature = "wasmer_singlepass",
+                    feature = "wavm"
+                ))]
                 if vector_contract {
                     vectors::validate(w)?;
                 }
@@ -268,7 +285,11 @@ impl Adapter {
                 Ok(json!({}))
             }
             "run" => {
-                #[cfg(any(feature = "wasmer_llvm", feature = "wasmer_singlepass"))]
+                #[cfg(any(
+                    feature = "wasmer_llvm",
+                    feature = "wasmer_singlepass",
+                    feature = "wavm"
+                ))]
                 if self
                     .prep
                     .as_ref()
@@ -305,9 +326,7 @@ impl Adapter {
                 // The harness protocol applies warmups only to steady samples.
                 // Fresh lifecycle samples must remain cold even when collection
                 // options also request warmups for steady measurements.
-                let warmup = if scenario != "steady"
-                    && (cfg!(feature = "wasmer_llvm") || cfg!(feature = "wasmer_singlepass"))
-                {
+                let warmup = if scenario != "steady" {
                     0
                 } else {
                     requested_warmup

@@ -561,7 +561,6 @@ func Run(ctx context.Context, lock Lock, artifactBase, out string, progress func
 					for _, ri := range rng.Perm(len(lock.Runtimes)) {
 						id := fmt.Sprintf("trial-%06d", counter)
 						counter++
-						manifest.Order = append(manifest.Order, id)
 						measurementsByScenario[scenario] = append(measurementsByScenario[scenario], measurement{id: id, scenario: scenario, workload: wi, runtime: ri, block: block})
 					}
 				}
@@ -570,6 +569,11 @@ func Run(ctx context.Context, lock Lock, artifactBase, out string, progress func
 		phases := make([][]measurement, 0, len(lock.Options.Scenarios))
 		for _, scenario := range lock.Options.Scenarios {
 			phases = append(phases, measurementsByScenario[scenario])
+			// Record the phase-major dispatch schedule. Workers within a phase
+			// may finish in any order, but the next phase starts after all finish.
+			for _, job := range measurementsByScenario[scenario] {
+				manifest.Order = append(manifest.Order, job.id)
+			}
 		}
 		measurementOutcomes := make(map[string]int)
 		measurementErr := parallelPhases(ctx, lock.Options.Workers, phases, func(job measurement) error {

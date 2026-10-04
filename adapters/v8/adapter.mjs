@@ -137,8 +137,8 @@ function runWasiCommand(compiled,scenario) {
     }else throw new Error(`unsupported WASI command scenario: ${scenario}`);
     const stdout=fs.readFileSync(fixture.stdoutPath),stderr=fs.readFileSync(fixture.stderrPath);
     if(stdout.length>c.output_limit_bytes||stderr.length>c.output_limit_bytes)throw new Error(`WASI output exceeds ${c.output_limit_bytes} bytes per stream`);
-    const result={exit_code:exitCode>>>0,stdout_sha256:hash(normalizeWasiStdout(c.stdout_normalize,stdout)),stderr_sha256:hash(stderr),stdout_bytes:stdout.length,stderr_bytes:stderr.length};
-    if(c.stdout_sha256&&result.stdout_sha256!==c.stdout_sha256)throw new Error('incorrect WASI stdout digest');
+    const result={exit_code:exitCode>>>0,stdout_sha256:hash(stdout),...(c.stdout_normalize?{stdout_oracle_sha256:hash(normalizeWasiStdout(c.stdout_normalize,stdout))}:{}),stderr_sha256:hash(stderr),stdout_bytes:stdout.length,stderr_bytes:stderr.length};
+    if(c.stdout_sha256&&(result.stdout_oracle_sha256 || result.stdout_sha256)!==c.stdout_sha256)throw new Error('incorrect WASI stdout digest');
     if(c.stderr_sha256&&result.stderr_sha256!==c.stderr_sha256)throw new Error('incorrect WASI stderr digest');
     if(result.exit_code!==(c.exit_code>>>0))throw new Error(`incorrect WASI exit code: ${result.exit_code}`);
     return {elapsed_ns:elapsed,verified:true,sample_type:'individual_operation',operations:1,result,command_result:result};

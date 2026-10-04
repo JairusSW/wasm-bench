@@ -176,7 +176,7 @@ impl Adapter {
                             option_env!("WB_SDK_RECEIPT_JSON").filter(|s| !s.is_empty())
                         {
                             description["description"]["effective_configuration"]["native_sdk_receipt"] =
-                                serde_json::from_str(metadata)?;
+                                json!(serde_json::from_str::<Value>(metadata)?.to_string());
                         }
                         description["description"]["capabilities"]["can_code_profile"] =
                             json!(embedding::can_native_size());

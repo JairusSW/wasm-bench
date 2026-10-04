@@ -20,6 +20,10 @@ with tempfile.TemporaryDirectory(prefix='wasmbench-wasmer-size-') as directory:
     responses=[json.loads(line) for line in result.stdout.splitlines()]
     assert len(responses)==len(requests),result.stdout
     assert responses[0]['description']['capabilities']['can_measure_native_code_size'] is True
+    configuration=responses[0]['description']['effective_configuration']
+    assert all(isinstance(value,str) for value in configuration.values()),configuration
+    if 'native_sdk_receipt' in configuration:
+        assert json.loads(configuration['native_sdk_receipt'])['source_sha']
     sizes=[]
     for i in (1,4):
         assert responses[i]['status']=='ok',responses[i]

@@ -96,7 +96,7 @@ func ValidateContinuationEvidence(root string, b Bundle) error {
 							return fmt.Errorf("native continuation external observation domain mismatch")
 						}
 						if o.Metric == "process.rss" || o.Metric == "process.pss" || o.Metric == "process.private" || o.Metric == "process.virtual" {
-							if seenSnapshots[o.Metric] || o.Phase != t.Scenario+"/"+event.Event.Stage || o.DefinitionVersion != 1 || o.Unit != "bytes" || o.Scope != "adapter_process" || o.Collector != "procfs" || o.CollectorVersion != "1" || o.Quality != "boundary_snapshot_only" || o.Denominator != "process" {
+							if seenSnapshots[o.Metric] || o.Phase != t.Scenario+"/"+event.Event.Stage || o.DefinitionVersion != 1 || o.Unit != "bytes" || o.Scope != "adapter_process" || (o.Collector != "procfs" && o.Collector != "darwin_ps") || o.CollectorVersion != "1" || o.Quality != "boundary_snapshot_only" || o.Denominator != "process" {
 								return fmt.Errorf("invalid native continuation process boundary provenance")
 							}
 							if o.Status == "available" {

@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-func Snapshot(pid int, phase string) []protocol.Observation {
+func snapshotProcfs(pid int, phase string) []protocol.Observation {
 	values := map[string]float64{}
 	status := "unsupported"
 	reason := "/proc process collectors require Linux"

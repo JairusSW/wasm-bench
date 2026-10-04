@@ -107,7 +107,7 @@ func validateRustAllocatorBoundaries(t Trial, phased bool) error {
 				if !slices.Contains([]string{"process.rss", "process.pss", "process.private", "process.virtual"}, o.Metric) {
 					continue
 				}
-				if seen[o.Metric] || o.Phase != t.Scenario+"/"+stage || o.Scope != "adapter_process" || o.Unit != "bytes" || o.DefinitionVersion != 1 || o.Profile != "memory" || o.Quality != "boundary_snapshot_only" || o.Denominator != "process" || o.Collector != "procfs" || o.CollectorVersion != "1" {
+				if seen[o.Metric] || o.Phase != t.Scenario+"/"+stage || o.Scope != "adapter_process" || o.Unit != "bytes" || o.DefinitionVersion != 1 || o.Profile != "memory" || o.Quality != "boundary_snapshot_only" || o.Denominator != "process" || (o.Collector != "procfs" && o.Collector != "darwin_ps") || o.CollectorVersion != "1" {
 					return fmt.Errorf("invalid allocator process boundary provenance")
 				}
 				if o.Status == "available" {

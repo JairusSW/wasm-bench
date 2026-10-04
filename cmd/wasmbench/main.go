@@ -727,7 +727,7 @@ func run(ctx context.Context, args []string) error {
 	case "run", "check", "plan":
 		f := flags(args[0])
 		requireIRQ := f.Bool("require-irq-affinity", false, "require device IRQ masks disjoint from locked --cpus at run boundaries; not continuous host qualification")
-		timingPeakRSS := f.Bool("timing-peak-rss", false, "capture kernel-accounted process lifetime peak RSS from the same timing trial")
+		timingPeakRSS := f.Bool("timing-peak-rss", true, "capture kernel-accounted process lifetime peak RSS from the same timing trial (timing profile default)")
 		archiveTools := f.Bool("archive-tools", false, "retain exact runner, adapters and analyzer as shared-cache links in the run bundle")
 		requirePartition := f.Bool("require-isolated-cpu-partition", false, "require empty isolated cgroup-parent and disjoint controller CPUs at run boundaries")
 		hostPolicyPath := f.String("host-policy", "", "observed host baseline JSON; immutable once locked")
@@ -736,11 +736,11 @@ func run(ctx context.Context, args []string) error {
 		rts := f.String("runtimes", "wazero,v8", "comma-separated adapter configurations")
 		profile := f.String("profile", "timing", "timing, memory, code, counters, profiling")
 		scenarios := f.String("scenarios", "compile,instantiate,first-call,steady", "comma-separated lifecycle scenarios")
-		launches := f.Int("launches", 6, "independent process launches per cell")
-		samples := f.Int("samples", 10, "batches per launch")
+		launches := f.Int("launches", 1, "independent process launches per cell")
+		samples := f.Int("samples", 1, "batches per launch; timing compile/instantiate/steady default to 3 when sample flags are omitted")
 		workers := f.Int("workers", 1, "maximum concurrent isolated trial workers (1..3)")
 		samplesByScenario := f.String("samples-by-scenario", "", "JSON object overriding timing samples by scenario, e.g. {\"compile\":3,\"instantiate\":3,\"steady\":3}")
-		operations := f.Int("operations", 100, "operations per batch")
+		operations := f.Int("operations", 1, "operations per batch")
 		warmup := f.Int("warmup", 3, "retained warmup batches for steady execution")
 		sustainedDuration := f.Duration("sustained-duration", 0, "minimum cumulative measured API time for sustained scenario; fixed samples, not a wall-time/service throughput target")
 		sustainedPostCollection := f.Bool("sustained-post-collection", false, "memory-only diagnostic: one forced Go GC after sustained logical close; not physical reclamation")
@@ -772,11 +772,19 @@ func run(ctx context.Context, args []string) error {
 		hostPolicyExplicit := false
 		partitionExplicit := false
 		workersExplicit := false
+		samplesExplicit := false
+		scenarioSamplesExplicit := false
 		irqExplicit := false
 		timingPeakExplicit := false
 		archiveExplicit := false
 		sustainedExplicit := false
 		f.Visit(func(v *flag.Flag) {
+			if v.Name == "samples" {
+				samplesExplicit = true
+			}
+			if v.Name == "samples-by-scenario" {
+				scenarioSamplesExplicit = true
+			}
 			if v.Name == "require-irq-affinity" {
 				irqExplicit = true
 			}
@@ -838,6 +846,10 @@ func run(ctx context.Context, args []string) error {
 			}
 			base = filepath.Dir(*lockPath)
 		} else {
+			scenarioSamples = defaultScenarioSamples(*profile, strings.Split(*scenarios, ","), scenarioSamples, samplesExplicit, scenarioSamplesExplicit)
+			if *profile != "timing" && !timingPeakExplicit {
+				*timingPeakRSS = false
+			}
 			workloads, e := corpus.Generate(filepath.Join(root, ".wasmbench", "corpus"), *suite)
 			if e != nil {
 				if e = experiment.ReadJSON(*suite, &workloads); e != nil {

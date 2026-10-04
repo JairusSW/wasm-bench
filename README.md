@@ -89,6 +89,13 @@ workload manifest.
 ./bin/wasmbench serve --dir reports/example
 ```
 
+Fresh runs default to one process launch and one operation per sample. Timing
+collects three samples for compilation, instantiation and steady execution, and
+one for first call and other scenarios. Non-timing profiles take one sample.
+Explicit `--samples` or `--samples-by-scenario` flags override the sample defaults;
+existing locks keep their recorded policy. Timing also captures whole-process
+peak RSS from those same trials; `--timing-peak-rss=false` disables it.
+
 Open the address printed by `serve` (default: `http://127.0.0.1:8080`).
 Runs retain measurements and input artifacts, but do not copy runtime binaries by
 default. Add `--archive-tools=true` to `plan` or `run` for a self-contained tool
@@ -99,7 +106,7 @@ for time and memory, and click a bar to inspect its raw evidence.
 Compile, instantiate and execution share a segmented latency bar; RSS has its
 own scale. Stage medians are separately measured, not end-to-end latency.
 
-To populate memory alongside timing, collect a separate matched pass:
+To collect additional memory diagnostics alongside the timing-pass RSS, collect a separate matched pass:
 
 ```sh
 ./bin/wasmbench run --suite core --profile memory --phase-barriers --out runs/example-memory

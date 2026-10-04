@@ -13,3 +13,11 @@ export function readonlyWasiImports(wasi) {
   };
   return imports;
 }
+
+export function normalizeWasiStdout(mode, bytes) {
+  if(!mode)return bytes;
+  if(mode!=='llvm-ir-preds')throw Error('unsupported WASI stdout normalizer: '+mode);
+  // Match the pinned corpus canonicalization byte-for-byte: collapse only
+  // ASCII spaces immediately preceding LLVM predecessor comments.
+  return Buffer.from(bytes.toString('latin1').replace(/ +(?=; preds =)/g,' '),'latin1');
+}

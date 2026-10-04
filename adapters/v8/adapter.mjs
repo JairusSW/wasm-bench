@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import {WASI} from 'node:wasi';
-import {readonlyWasiImports} from './wasi-readonly.mjs';
+import {readonlyWasiImports,normalizeWasiStdout} from './wasi-readonly.mjs';
 import {profileRun} from './profiling.mjs';
 import * as harness from './harness.mjs';
 import {encodeFloats, verifyFloats, validateFloat, numericSignature, floatArguments} from './floats.mjs';
@@ -89,7 +89,7 @@ function verify(result,target=instance) {
   for(const check of prep.workload.oracle.memory||[]){const want=Buffer.from(check.hex,'hex');const memory=target.exports.memory;const offset=base+check.offset;if(!Number.isSafeInteger(offset)||offset<0||offset>0xffffffff||!memory||offset+want.length>memory.buffer.byteLength||!Buffer.from(memory.buffer,offset,want.length).equals(want))throw new Error('incorrect result: memory oracle mismatch');}
 }
 function wasiFixture(command) {
-  if(command.stdout_normalize)throw new Error('unsupported WASI stdout normalizer');
+  if(command.stdout_normalize && command.stdout_normalize!=='llvm-ir-preds')throw new Error('unsupported WASI stdout normalizer');
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'wasmbench-v8-wasi-'));
   const streams=fs.mkdtempSync(path.join(os.tmpdir(),'wasmbench-v8-wasi-streams-'));
   const staged=new Map();
@@ -137,7 +137,7 @@ function runWasiCommand(compiled,scenario) {
     }else throw new Error(`unsupported WASI command scenario: ${scenario}`);
     const stdout=fs.readFileSync(fixture.stdoutPath),stderr=fs.readFileSync(fixture.stderrPath);
     if(stdout.length>c.output_limit_bytes||stderr.length>c.output_limit_bytes)throw new Error(`WASI output exceeds ${c.output_limit_bytes} bytes per stream`);
-    const result={exit_code:exitCode>>>0,stdout_sha256:hash(stdout),stderr_sha256:hash(stderr),stdout_bytes:stdout.length,stderr_bytes:stderr.length};
+    const result={exit_code:exitCode>>>0,stdout_sha256:hash(normalizeWasiStdout(c.stdout_normalize,stdout)),stderr_sha256:hash(stderr),stdout_bytes:stdout.length,stderr_bytes:stderr.length};
     if(c.stdout_sha256&&result.stdout_sha256!==c.stdout_sha256)throw new Error('incorrect WASI stdout digest');
     if(c.stderr_sha256&&result.stderr_sha256!==c.stderr_sha256)throw new Error('incorrect WASI stderr digest');
     if(result.exit_code!==(c.exit_code>>>0))throw new Error(`incorrect WASI exit code: ${result.exit_code}`);
@@ -499,7 +499,7 @@ async function handle(req,profiled=false) {
       if(prep.workload.host_profile==='identity-v1')imports.wasmbench=Object.assign(Object.create(null),{identity:v=>v});
       if(prep.workload.host_profile==='assemblyscript-abort-v1')imports.env=Object.assign(Object.create(null),{abort:(message,file,line,column)=>{throw new Error(`AssemblyScript abort: message_ptr=${message>>>0} file_ptr=${file>>>0} line=${line>>>0} column=${column>>>0}`);}});
       if(wasiWorkload){
-        if(prep.profile!=='timing'||prep.workload.host_profile!=='wasi-preview1-readonly-v1'||prep.workload.oracle.kind!=='exact_command'||!prep.workload.command||prep.workload.reset!=='fresh_instance_per_sample'||prep.workload.command.stdout_normalize)
+        if(prep.profile!=='timing'||prep.workload.host_profile!=='wasi-preview1-readonly-v1'||prep.workload.oracle.kind!=='exact_command'||!prep.workload.command||prep.workload.reset!=='fresh_instance_per_sample'||!['','llvm-ir-preds'].includes(prep.workload.command.stdout_normalize || ''))
           return {status:'unsupported',reason:'Node WASI Preview 1 adapter supports timing only for exact-command, fresh-instance workloads without stdout normalization'};
       }else if (prep.workload.abi !== 'core' || !['stateless','fresh_instance_per_sample'].includes(prep.workload.reset)) throw new Error('unsupported ABI or reset policy');
       bytes = fs.readFileSync(prep.artifact);

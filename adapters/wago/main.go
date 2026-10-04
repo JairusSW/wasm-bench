@@ -123,13 +123,19 @@ func (a *adapter) fresh() error {
 	a.fn, e = a.instance.WasmFunc(a.prep.Workload.Export)
 	return e
 }
-func (a *adapter) setup() error {
+func (a *adapter) compilePrepared() error {
 	if a.compiled == nil {
 		var e error
 		a.compiled, e = wago.Compile(a.compileConfig, a.wasm)
 		if e != nil {
 			return e
 		}
+	}
+	return nil
+}
+func (a *adapter) setup() error {
+	if err := a.compilePrepared(); err != nil {
+		return err
 	}
 	if a.instance == nil {
 		return a.fresh()
@@ -583,7 +589,13 @@ func main() {
 				a.barrier = func(event protocol.PhaseEvent) error { return protocol.Barrier(scanner, enc, req.ID, event) }
 				resp.Samples, e = a.run(req.Run)
 			case "inspect":
-				if e = a.setup(); e == nil {
+				if a.prep == nil {
+					e = fmt.Errorf("prepare required")
+					break
+				}
+				// Native compilation does not require an instance or WASI imports.
+				// Command correctness is verified by the sacrificial run.
+				if e = a.compilePrepared(); e == nil {
 					if a.compiled.CodeSize() <= protocol.MaxCodeImageBytes {
 						var image bytes.Buffer
 						if _, e = a.compiled.WriteCodeTo(&image); e != nil {

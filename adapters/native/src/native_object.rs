@@ -57,6 +57,12 @@ mod tests {
         assert_eq!(result["diagnostics"][1]["status"], "unavailable");
     }
     #[test]
+    fn captures_elf_large_text_sections() {
+        let object = include_bytes!("../tests/fixtures/wavm-return42-amd64.o");
+        let result = inspect(object, "nightly-2026-04-05").unwrap();
+        assert_eq!(result["diagnostics"][0]["value"], 46);
+    }
+    #[test]
     fn rejects_linked_and_truncated_objects() {
         let mut linked = OBJECT.to_vec();
         linked[12..16].copy_from_slice(&2u32.to_le_bytes());

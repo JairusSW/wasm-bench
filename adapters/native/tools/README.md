@@ -25,7 +25,12 @@ WAVM structures.
 Verified on macOS arm64 with `nightly-2026-04-05`: the host-to-Wasm call fixture
 produced a 1,696-byte Mach-O object with a 48-byte `__text` section, independently
 checked with `file` and `otool -l`. The API uses the same default `FeatureSpec`
-as this release's C API engine. Linux ELF extraction still needs verification.
+as this release's C API engine. Linux amd64 protocol verification also passed: a return-42 module produced
+a 2,608-byte ELF object containing 46 executable bytes in `.ltext` (with an
+empty `.text`), independently checked with `readelf -SW`.
 
 `../tests/fixtures/wavm-call-arm64.o` retains that exact diagnostic object for
 parser regression tests. It is not a workload and is never executed.
+
+`../tests/fixtures/wavm-return42-amd64.o` retains that ELF object, testing
+executable sections beyond the conventional `.text` name.

@@ -950,18 +950,19 @@ func runTrial(ctx context.Context, root string, o Options, r Runtime, w protocol
 			return
 		}
 	}
+	codeCompile := o.Profile == "code" && scenario == "compile" && r.Description.Capabilities["can_export_native_code"]
 	commandPhasesUnsupported := o.PhaseBarriers && (!slices.Contains([]string{"compile", "instantiate", "first-call", "teardown"}, scenario) || !r.Description.Capabilities["can_command_"+scenario+"_phases"])
 	canRunCommand := r.Description.Capabilities["can_run_commands"]
 	if w.ABI == "component" {
 		canRunCommand = r.Description.Capabilities["can_run_component_commands"]
 		commandPhasesUnsupported = o.PhaseBarriers && (!slices.Contains([]string{"compile", "instantiate", "first-call"}, scenario) || !r.Description.Capabilities["can_component_command_phases"])
 	}
-	if w.Oracle.Kind == "exact_command" && (!canRunCommand || !slices.Contains([]string{"compile", "instantiate", "first-call", "steady", "cold-process", "teardown"}, scenario) || (block >= 0 && (commandPhasesUnsupported || !slices.Contains([]string{"timing", "memory"}, o.Profile)))) {
+	if w.Oracle.Kind == "exact_command" && (!canRunCommand || !slices.Contains([]string{"compile", "instantiate", "first-call", "steady", "cold-process", "teardown"}, scenario) || (block >= 0 && (commandPhasesUnsupported || (!slices.Contains([]string{"timing", "memory"}, o.Profile) && !codeCompile)))) {
 		t.Status = "unsupported"
 		t.Reason = "command scenario/profile not supported"
 		return
 	}
-	if w.Oracle.Kind == "exact_vectors" && (!r.Description.Capabilities["can_run_vectors"] || !slices.Contains([]string{"compile", "instantiate", "first-call", "steady", "cold-process", "teardown"}, scenario) || (block >= 0 && (!slices.Contains([]string{"timing", "memory"}, o.Profile) || vectorPhasesUnsupported))) {
+	if w.Oracle.Kind == "exact_vectors" && (!r.Description.Capabilities["can_run_vectors"] || !slices.Contains([]string{"compile", "instantiate", "first-call", "steady", "cold-process", "teardown"}, scenario) || (block >= 0 && ((!slices.Contains([]string{"timing", "memory"}, o.Profile) && !codeCompile) || vectorPhasesUnsupported))) {
 		t.Status = "unsupported"
 		t.Reason = "ordered vector timing capability/profile not supported"
 		return

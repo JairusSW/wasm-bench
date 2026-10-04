@@ -55,7 +55,11 @@ func TestWebsiteCodePassVectorPreflight(t *testing.T) {
 		t.Fatalf("code-profile correctness preflight failed: %+v", check)
 	}
 	measured := runTrial(context.Background(), directory, options, runtime, workload, "compile", 0, "code")
-	if measured.Status != "unsupported" || len(measured.Samples) != 0 {
-		t.Fatalf("unsupported vector code extraction produced measurements: %+v", measured)
+	if runtime.Description.Capabilities["can_export_native_code"] {
+		if measured.Status != "ok" || measured.CodeImage == nil || len(measured.Samples) != 0 {
+			t.Fatalf("advertised vector native export failed: %+v", measured)
+		}
+	} else if measured.Status != "unsupported" || len(measured.Samples) != 0 {
+		t.Fatalf("unadvertised vector native export produced measurements: %+v", measured)
 	}
 }

@@ -18,6 +18,10 @@ function compilerDescription(description) {
   const configuration=description.effective_configuration;
   description.capabilities.can_control_compiler_mode=true;
   configuration.compiler_mode=configuration.tiering=compilerMode;
+  if(process.execArgv.includes('--no-wasm-native-module-cache')){
+    configuration.module_cache='disabled';
+    description.capabilities.can_disable_code_cache=true;
+  }
   configuration.lazy_compilation='disabled';
   configuration.compiler_mode_probe=JSON.stringify(compilerModeProbe);
   configuration.compiler_mode_policy='explicit eager compiler mode verified using a separate fixed calibration module before workloads; no per-workload tier inspection or fully materialized whole-module claim';

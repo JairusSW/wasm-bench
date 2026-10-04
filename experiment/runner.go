@@ -67,13 +67,22 @@ func ResolveRuntimes(root string, ids []string) ([]Runtime, error) {
 				r.Command = append(r.Command, "--experimental-wasm-wasmfx")
 			}
 			mode := ""
-			if id == "v8-liftoff-only" {
+			if id == "v8" {
+				mode = os.Getenv("WASMBENCH_V8_COMPILER_MODE")
+				if mode != "" && mode != "optimizing-only" && mode != "liftoff-only" {
+					return nil, fmt.Errorf("invalid WASMBENCH_V8_COMPILER_MODE %q", mode)
+				}
+			}
+			if id == "v8-liftoff-only" || mode == "liftoff-only" {
 				mode = "liftoff-only"
 				r.Command = append(r.Command, "--allow-natives-syntax", "--liftoff-only", "--no-wasm-tier-up", "--no-wasm-lazy-compilation")
 			}
-			if id == "v8-optimizing-only" {
+			if id == "v8-optimizing-only" || mode == "optimizing-only" {
 				mode = "optimizing-only"
 				r.Command = append(r.Command, "--allow-natives-syntax", "--no-liftoff", "--no-wasm-tier-up", "--no-wasm-lazy-compilation")
+			}
+			if id == "v8" && mode != "" {
+				r.Command = append(r.Command, "--no-wasm-native-module-cache")
 			}
 			r.Command = append(r.Command, filepath.Join(root, "adapters", "v8", "adapter.mjs"))
 			if mode != "" {

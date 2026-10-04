@@ -15,7 +15,7 @@ export function parseCompilerMode(argv, flags, environment) {
   const mode=argv[0].slice('--compiler-mode='.length),expected=compilerModeFlags[mode];
   if(!expected)throw new Error('unknown V8 compiler mode');
   if(environment.NODE_OPTIONS)throw new Error('controlled compiler mode refuses NODE_OPTIONS overrides');
-  if(JSON.stringify(flags)!==JSON.stringify(expected))throw new Error('controlled compiler mode requires the exact verified Node/V8 flag sequence');
+  if(JSON.stringify(flags)!==JSON.stringify(expected) && JSON.stringify(flags)!==JSON.stringify([...expected,'--no-wasm-native-module-cache']))throw new Error('controlled compiler mode requires the exact verified Node/V8 flag sequence');
   return mode;
 }
 

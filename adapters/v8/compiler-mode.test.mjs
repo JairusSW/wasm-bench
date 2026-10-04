@@ -8,6 +8,7 @@ test('controlled compiler mode requires exact flags and no environment overrides
   for(const [mode,flags] of Object.entries(compilerModeFlags)) {
     const argv=['--compiler-mode='+mode];
     assert.equal(parseCompilerMode(argv,flags,{}),mode);
+    assert.equal(parseCompilerMode(argv,[...flags,'--no-wasm-native-module-cache'],{}),mode);
     for(const invalid of [[],flags.slice(1),[...flags,'--wasm-tier-up'],[...flags,'--liftoff'],[...flags].reverse()])assert.throws(()=>parseCompilerMode(argv,invalid,{}));
     assert.throws(()=>parseCompilerMode(argv,flags,{NODE_OPTIONS:'--no-liftoff'}));
     assert.throws(()=>parseCompilerMode([...argv,...argv],flags,{}));

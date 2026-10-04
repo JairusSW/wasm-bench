@@ -77,6 +77,24 @@ func TestResolveV8UsesPinnedNodeBinary(t *testing.T) {
 	if !strings.Contains(strings.Join(runtimes[0].Command, " "), "--no-liftoff") {
 		t.Fatalf("V8 optimizing-only flags were lost: %#v", runtimes[0].Command)
 	}
+	t.Setenv("WASMBENCH_V8_COMPILER_MODE", "optimizing-only")
+	runtimes, err = ResolveRuntimes(root, []string{"v8"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := strings.Join(runtimes[0].Command, " ")
+	for _, flag := range []string{"--no-liftoff", "--no-wasm-tier-up", "--no-wasm-lazy-compilation", "--no-wasm-native-module-cache", "--compiler-mode=optimizing-only"} {
+		if !strings.Contains(command, flag) {
+			t.Fatalf("controlled base V8 lost %s: %s", flag, command)
+		}
+	}
+	if runtimes[0].ID != "v8" {
+		t.Fatal("changed requested runtime identity")
+	}
+	t.Setenv("WASMBENCH_V8_COMPILER_MODE", "invalid")
+	if _, err = ResolveRuntimes(root, []string{"v8"}); err == nil {
+		t.Fatal("accepted invalid tier policy")
+	}
 }
 
 func TestExtraShellProbe(t *testing.T) {

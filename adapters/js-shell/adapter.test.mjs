@@ -87,3 +87,18 @@ test('AssemblyScript abort rejects wrong signature and undeclared profile',async
   assert.equal((await session([prepare(bad,w)],bad))[0].status,'unsupported');
   const bytes=abortFixture();assert.equal((await session([prepare(bytes,work())],bytes))[0].status,'unsupported');
 });
+
+
+test('fresh steady isolates mutable guest state before every sample',async()=>{
+  const section=(id,data)=>[id,...leb(data.length),...data];
+  const body=[0,35,0,65,1,106,36,0,35,0,11];
+  const bytes=Buffer.from([0,97,115,109,1,0,0,0,
+    ...section(1,[1,96,0,1,127]),...section(3,[1,0]),
+    ...section(6,[1,127,1,65,0,11]),...section(7,[1,3,114,117,110,0,0]),
+    ...section(10,[1,...leb(body.length),...body])]);
+  const w={...work(),reset:'fresh_instance_per_sample',args:[],oracle:{kind:'exact_u64',expected:['1']}};
+  const out=await session([prepare(bytes,w),{method:'run',run:{scenario:'steady',samples:3,operations:1,warmup:2}}],bytes);
+  assert.equal(out[0].status,'ok');assert.equal(out[1].status,'ok',JSON.stringify(out[1]));
+  assert.equal(out[1].samples.filter(s=>!s.warmup).length,3);
+  assert.ok(out[1].samples.every(s=>s.verified && s.result[0]==='1'));
+});

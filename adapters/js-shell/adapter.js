@@ -190,7 +190,7 @@
       runtime_version: deno ? Deno.version.v8 : option('runtime-version') || (option('binary-sha256') ? 'binary-sha256:' + option('binary-sha256') : 'unreported'),
       embedding: deno ? 'Deno WebAssembly API' : runtime + ' standalone shell WebAssembly API',
       backend, build: deno ? 'Deno ' + Deno.version.deno : 'binary-sha256:' + option('binary-sha256'),
-      effective_configuration:{clock:hostClock?'std::chrono::steady_clock':'performance.now monotonic', compilation_policy:'WebAssembly.Module API return; lazy/background compilation and engine caches uncontrolled; no materialization claim', reset_policy:'fresh instance per lifecycle sample; stateless steady reuses one instance', release_policy:'drop JS references only; GC and physical reclamation uncontrolled; no forced GC', host_import_policy:'Only wasmbench.identity (i32)->i32 or env.abort (i32,i32,i32,i32)->(); abort throws a guest RuntimeError; exact declared profile and signature required',
+      effective_configuration:{clock:hostClock?'std::chrono::steady_clock':'performance.now monotonic', compilation_policy:'WebAssembly.Module API return; lazy/background compilation and engine caches uncontrolled; no materialization claim', reset_policy:'fresh instance per lifecycle sample; stateless steady reuses one instance; fresh-instance steady initializes a new instance before each one-operation timer', release_policy:'drop JS references only; GC and physical reclamation uncontrolled; no forced GC', host_import_policy:'Only wasmbench.identity (i32)->i32 or env.abort (i32,i32,i32,i32)->(); abort throws a guest RuntimeError; exact declared profile and signature required',
         ...(runtime==='spidermonkey'&&tierMode==='ion-only'?{wasm_compiler:'Ion only',tiering:'baseline disabled; Ion selected at compile time',flags:'--wasm-compiler=ion'}:{}),
         ...(runtime==='deno'&&tierMode==='optimizing-only'?{compiler_mode:'optimizing-only',tiering:'no Liftoff; eager optimizing compilation; tier-up disabled',flags:'--allow-natives-syntax --no-liftoff --no-wasm-tier-up --no-wasm-lazy-compilation',compiler_mode_probe:JSON.stringify(tierProbe)}:{}),
         ...(runtime==='jsc'&&tierMode==='omg-eager'?{tiering:'IPInt → BBQ → OMG tier-up forced after warmup; synchronous OMG compilation',warmup_minimum:'2',flags:'thresholdForBBQOptimizeAfterWarmUp=1 thresholdForBBQOptimizeSoon=1 thresholdForOMGOptimizeAfterWarmUp=1 thresholdForOMGOptimizeSoon=1 useConcurrentJIT=false numberOfWasmCompilerThreads=0',tier_probe:JSON.stringify(tierProbe)}:{})},
@@ -229,17 +229,18 @@
       const r = req.run;
       if (!r || !scenarios.includes(r.scenario) || (r.phase_barriers && prep.profile !== 'memory')) unsupported('unsupported scenario/profile/barriers');
       for (const [key,min,max] of [['samples',1,100000],['operations',1,1000000],['warmup',0,100000]]) if (!Number.isSafeInteger(r[key]) || r[key] < min || r[key] > max) throw Error('invalid bounded batch');
-      if (r.scenario === 'steady' && prep.workload.reset !== 'stateless') unsupported('steady batches require stateless reset');
+      const freshSteady = r.scenario === 'steady' && prep.workload.reset === 'fresh_instance_per_sample';
+      if (freshSteady && r.operations !== 1) unsupported('fresh-instance steady samples require one operation');
       if (r.scenario !== 'steady' && (r.operations !== 1 || r.warmup !== 0)) unsupported('lifecycle samples require one operation and zero warmup');
       const args = callArgs(), warmup = r.scenario === 'steady' ? Math.max(r.warmup, runtime==='jsc'&&tierMode==='omg-eager'?2:0) : 0, samples = [];
       let compiled = r.scenario === 'compile' ? undefined : new WebAssembly.Module(bytes);
       const imports=importsFor(prep.workload);
-      let shared = r.scenario === 'steady' ? initialize(new WebAssembly.Instance(compiled, imports)) : undefined;
+      let shared = r.scenario === 'steady' && !freshSteady ? initialize(new WebAssembly.Instance(compiled, imports)) : undefined;
       if (shared) verify(invoke(shared,args),shared);
       const stages = {compile:['before_compile','compiled','released'],instantiate:['before_instantiate','instantiated','instance_released'],'first-call':['before_first_call','first_call_returned','first_call_released'],steady:['before_steady_batch','steady_batch_returned','steady_batch_verified']}[r.scenario];
       for (let i = 0; i < warmup + r.samples; i++) {
         let target = shared, module = compiled;
-        if (r.scenario === 'first-call') target = initialize(new WebAssembly.Instance(module, imports));
+        if (r.scenario === 'first-call' || freshSteady) target = initialize(new WebAssembly.Instance(module, imports));
         const results = new Array(r.scenario === 'steady' ? r.operations : 1);
         if (r.phase_barriers) await barrier(req,i,stages[0]);
         const start = now();

@@ -39,5 +39,7 @@ python3 ../tests/wasmer-native-size-protocol.py /path/to/adapter-native
 
 Verified on macOS arm64: one defined return-42 function is 92 bytes; adding an
 unexported second function yields 184 bytes. Repeated inspections match exactly.
-Unmodified SDK detection also passed (capability false). Linux verification and
-full corpus collection remain required.
+On Linux amd64 the same checks yield 81 and 162 bytes. Unmodified SDK detection
+also passed (capability false). The macOS core corpus has 145 measured workloads
+and two SIMD workloads rejected by the selected Singlepass policy; its sealed
+bundle checksums verify. Linux full corpus collection remains required.

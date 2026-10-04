@@ -306,6 +306,9 @@ func Load(root string) (Bundle, error) {
 		}
 		b.Trials = append(b.Trials, t)
 	}
+	if err := ValidateTimingPeakRSS(b); err != nil {
+		return b, err
+	}
 	if err := ValidatePartitionTrialEvidence(b); err != nil {
 		return b, err
 	}

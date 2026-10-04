@@ -12,6 +12,7 @@ import (
 	"html/template"
 	"os"
 	"path/filepath"
+	"slices"
 )
 
 //go:embed report.html
@@ -241,6 +242,15 @@ func buildReportDataset(run, memoryRun, codeRun string) (Dataset, error) {
 	if len(d.SustainedSessions) > 0 {
 		d.SustainedVersion = analysis.SustainedVersion
 	}
+	if b.Manifest.Lock.Options.TimingPeakRSS {
+		matched := map[string]bool{}
+		for _, trial := range b.Trials {
+			matched[trial.Runtime+"\x00"+trial.Workload] = true
+		}
+		d.MemoryStages = memoryStages(b, matched)
+		d.MemoryEvidenceVersion = MemoryEvidenceVersion
+		d.MemorySource = &MemorySource{ID: b.Manifest.ID, Profile: "timing", Note: "Kernel-accounted adapter process lifetime peak RSS from the same timing trial; includes startup, setup, verification and all samples. One peak per trial, not per-sample or phase-only RSS."}
+	}
 	if memoryRun != "" {
 		memory, err := experiment.Load(memoryRun)
 		if err != nil {
@@ -250,7 +260,12 @@ func buildReportDataset(run, memoryRun, codeRun string) (Dataset, error) {
 		if err != nil {
 			return Dataset{}, err
 		}
+		timingStages := d.MemoryStages
 		d.MemoryStages = memoryStages(memory, matched)
+		if b.Manifest.Lock.Options.TimingPeakRSS {
+			d.MemoryStages = slices.DeleteFunc(d.MemoryStages, func(row MemoryStage) bool { return row.Metric == "process.peak_rss" })
+			d.MemoryStages = append(d.MemoryStages, timingStages...)
+		}
 		snapshotViews, err := snapshotMemoryViews(memory, "raw-memory", matched)
 		if err != nil {
 			return Dataset{}, err
@@ -270,6 +285,10 @@ func buildReportDataset(run, memoryRun, codeRun string) (Dataset, error) {
 		}
 		d.PhaseCPU = phaseCPUStages(memory, matched)
 		d.MemorySource = &MemorySource{ID: memory.Manifest.ID, Profile: "memory", Note: "Separate memory-profile run; joining requires matching host identity, resource policy, protocol, effective runtime configuration, runtime binaries, and workload contracts. Stage memory values are not timing-pass measurements."}
+		if b.Manifest.Lock.Options.TimingPeakRSS {
+			d.MemorySource.TimingID = b.Manifest.ID
+			d.MemorySource.Note = "Process lifetime peak RSS comes from the same timing trials (source_run/source_profile on each peak row); additional memory metrics come from the separately matched memory run. Peaks include startup, setup, verification and all timing samples."
+		}
 	} else if b.Manifest.Lock.Options.Profile == "memory" {
 		d.PhaseCPU = phaseCPUStages(b, nil)
 	}
@@ -323,7 +342,7 @@ func VerifyReport(root string) error {
 		return err
 	}
 	memory := ""
-	if recorded.MemorySource != nil {
+	if recorded.MemorySource != nil && recorded.MemorySource.Profile == "memory" {
 		memory = filepath.Join(root, "raw-memory")
 	} else if _, err := os.Stat(filepath.Join(root, "raw-memory")); err == nil {
 		return fmt.Errorf("unrecorded memory bundle in report")

@@ -186,6 +186,16 @@ func ValidateLock(l Lock) error {
 		return fmt.Errorf("unsupported schema or protocol")
 	}
 	o := l.Options
+	if o.TimingPeakRSS {
+		if o.Profile != "timing" {
+			return fmt.Errorf("timing peak RSS requires the timing profile")
+		}
+		for _, scenario := range o.Scenarios {
+			if !slices.Contains([]string{"compile", "instantiate", "first-call", "steady"}, scenario) {
+				return fmt.Errorf("timing peak RSS requires ordinary lifecycle scenarios")
+			}
+		}
+	}
 	if o.Workers < 0 || o.Workers > 3 {
 		return fmt.Errorf("workers must be within 1..3")
 	}
@@ -1050,8 +1060,10 @@ func runTrial(ctx context.Context, root string, o Options, r Runtime, w protocol
 			}
 			t.Reason += "; cgroup cleanup: " + err.Error()
 		}
-		if block >= 0 && o.Profile == "memory" && w.ProcessSnapshot == nil && w.SnapshotDensity == nil {
-			t.Observations = append(t.Observations, c.PeakRSSObservation(scenario))
+		if block >= 0 && (o.Profile == "memory" || o.TimingPeakRSS) && w.ProcessSnapshot == nil && w.SnapshotDensity == nil {
+			peak := c.PeakRSSObservation(scenario)
+			peak.Profile = o.Profile
+			t.Observations = append(t.Observations, peak)
 		}
 	}()
 	if o.monitorCPUPartition {

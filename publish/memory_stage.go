@@ -11,20 +11,22 @@ import (
 	"github.com/wasmbench/wasmbench/protocol"
 )
 
-// MemoryStage is a median of independent memory-profile launch medians. Its
+// MemoryStage is a median of independent launch measurements. Its
 // measurement domain is explicit; unlike timing segments these values are never
 // added into a lifecycle total.
 type MemoryStage struct {
-	Runtime      string         `json:"runtime"`
-	Workload     string         `json:"workload"`
-	Scenario     string         `json:"scenario"`
-	Metric       string         `json:"metric"`
-	Median       *float64       `json:"median_bytes"`
-	Low          *float64       `json:"ci95_low_bytes"`
-	High         *float64       `json:"ci95_high_bytes"`
-	Launches     int            `json:"independent_launches"`
-	Trials       []string       `json:"trial_ids"`
-	LaunchValues []MemoryLaunch `json:"launch_values"`
+	SourceRun     string         `json:"source_run,omitempty"`
+	SourceProfile string         `json:"source_profile,omitempty"`
+	Runtime       string         `json:"runtime"`
+	Workload      string         `json:"workload"`
+	Scenario      string         `json:"scenario"`
+	Metric        string         `json:"metric"`
+	Median        *float64       `json:"median_bytes"`
+	Low           *float64       `json:"ci95_low_bytes"`
+	High          *float64       `json:"ci95_high_bytes"`
+	Launches      int            `json:"independent_launches"`
+	Trials        []string       `json:"trial_ids"`
+	LaunchValues  []MemoryLaunch `json:"launch_values"`
 }
 
 type MemoryLaunch struct {
@@ -33,9 +35,10 @@ type MemoryLaunch struct {
 }
 
 type MemorySource struct {
-	ID      string `json:"id"`
-	Profile string `json:"profile"`
-	Note    string `json:"note"`
+	TimingID string `json:"timing_id,omitempty"`
+	ID       string `json:"id"`
+	Profile  string `json:"profile"`
+	Note     string `json:"note"`
 }
 
 var memoryStageMetrics = []string{"host.alloc.bytes", "host.rust.alloc.bytes", "host.rust.outstanding.end", "host.rust.outstanding.observed_peak", "cgroup.memory.phase_peak", "process.peak_rss", "process.rss", "host.heap.end", "host.js_heap.end", "checkpoint.payload_bytes"}
@@ -176,10 +179,17 @@ func memoryStages(memory experiment.Bundle, matched map[string]bool) []MemorySta
 	trialIDs := map[key][]string{}
 	launchValues := map[key][]MemoryLaunch{}
 	for _, trial := range memory.Trials {
-		if trial.Block < 0 || trial.Profile != "memory" || trial.Status != "ok" || !matched[trial.Runtime+"\x00"+trial.Workload] {
+		sameTimingTrial := memory.Manifest.Lock.Options.TimingPeakRSS && trial.Profile == "timing"
+		if trial.Block < 0 || (trial.Profile != "memory" && !sameTimingTrial) || trial.Status != "ok" || !matched[trial.Runtime+"\x00"+trial.Workload] {
 			continue
 		}
 		for _, metric := range memoryStageMetrics {
+			if sameTimingTrial && metric != "process.peak_rss" {
+				continue
+			}
+			if sameTimingTrial && !validTimingPeak(trial.Observations) {
+				continue
+			}
 			var values []float64
 			expected := 1
 			// RSS boundaries and wait4 lifetime peaks are trial-scoped.
@@ -213,6 +223,10 @@ func memoryStages(memory experiment.Bundle, matched map[string]bool) []MemorySta
 	var out []MemoryStage
 	for k, values := range launches {
 		row := MemoryStage{Runtime: k.runtime, Workload: k.workload, Scenario: k.scenario, Metric: k.metric, Median: medianStage(values), Launches: len(values), Trials: trialIDs[k], LaunchValues: launchValues[k]}
+		if memory.Manifest.Lock.Options.TimingPeakRSS {
+			row.SourceRun = memory.Manifest.ID
+			row.SourceProfile = "timing"
+		}
 		if low, high, ok := analysis.BootstrapMedian95(values); ok {
 			row.Low, row.High = &low, &high
 		}
@@ -232,4 +246,18 @@ func memoryStages(memory experiment.Bundle, matched map[string]bool) []MemorySta
 		return a.Metric < b.Metric
 	})
 	return out
+}
+
+func validTimingPeak(observations []protocol.Observation) bool {
+	count := 0
+	for _, o := range observations {
+		if o.Metric != "process.peak_rss" {
+			continue
+		}
+		count++
+		if o.Profile != "timing" || o.DefinitionVersion != 1 || o.Scope != "adapter_process" || o.CollectorVersion != "1" || o.Denominator != "process" {
+			return false
+		}
+	}
+	return count == 1
 }

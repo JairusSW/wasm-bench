@@ -727,7 +727,8 @@ func run(ctx context.Context, args []string) error {
 	case "run", "check", "plan":
 		f := flags(args[0])
 		requireIRQ := f.Bool("require-irq-affinity", false, "require device IRQ masks disjoint from locked --cpus at run boundaries; not continuous host qualification")
-		archiveTools := f.Bool("archive-tools", false, "opt in to copying exact runner, adapters and analyzer into the run bundle")
+		timingPeakRSS := f.Bool("timing-peak-rss", false, "capture kernel-accounted process lifetime peak RSS from the same timing trial")
+		archiveTools := f.Bool("archive-tools", false, "retain exact runner, adapters and analyzer as shared-cache links in the run bundle")
 		requirePartition := f.Bool("require-isolated-cpu-partition", false, "require empty isolated cgroup-parent and disjoint controller CPUs at run boundaries")
 		hostPolicyPath := f.String("host-policy", "", "observed host baseline JSON; immutable once locked")
 		validationProfile := f.String("validation-profile", "default", "independent admission: default, wasm1, wasm2, wasm3, all (existing locks preserve their policy)")
@@ -772,6 +773,7 @@ func run(ctx context.Context, args []string) error {
 		partitionExplicit := false
 		workersExplicit := false
 		irqExplicit := false
+		timingPeakExplicit := false
 		archiveExplicit := false
 		sustainedExplicit := false
 		f.Visit(func(v *flag.Flag) {
@@ -780,6 +782,9 @@ func run(ctx context.Context, args []string) error {
 			}
 			if v.Name == "sustained-duration" || v.Name == "sustained-post-collection" {
 				sustainedExplicit = true
+			}
+			if v.Name == "timing-peak-rss" {
+				timingPeakExplicit = true
 			}
 			if v.Name == "archive-tools" {
 				archiveExplicit = true
@@ -809,6 +814,9 @@ func run(ctx context.Context, args []string) error {
 			}
 			if sustainedExplicit {
 				return fmt.Errorf("sustained duration/post-collection flags cannot override an existing lock")
+			}
+			if timingPeakExplicit {
+				return fmt.Errorf("--timing-peak-rss cannot override an existing lock")
 			}
 			if archiveExplicit {
 				return fmt.Errorf("--archive-tools cannot override an existing lock")
@@ -841,7 +849,7 @@ func run(ctx context.Context, args []string) error {
 			if e != nil {
 				return e
 			}
-			lock, e = experiment.NewLock(experiment.Options{Workers: *workers, SustainedPostCollection: *sustainedPostCollection, SustainedDuration: *sustainedDuration, ScenarioSamples: scenarioSamples, PhaseBarriers: *phaseBarriers, Resources: agent.ResourcePolicy{CgroupParent: *cgroupParent, MemoryMaxBytes: *memoryMax, DisableSwap: *noSwap, CPUQuotaUS: *cpuQuota, CPUs: *cpus, Mems: *mems, PidsMax: *pidsMax}, Suite: *suite, Profile: *profile, Scenarios: strings.Split(*scenarios, ","), Launches: *launches, Samples: *samples, Operations: *operations, Warmup: *warmup, Seed: *seed, Timeout: *timeout, Check: args[0] == "check"}, runtimes, workloads)
+			lock, e = experiment.NewLock(experiment.Options{TimingPeakRSS: *timingPeakRSS, Workers: *workers, SustainedPostCollection: *sustainedPostCollection, SustainedDuration: *sustainedDuration, ScenarioSamples: scenarioSamples, PhaseBarriers: *phaseBarriers, Resources: agent.ResourcePolicy{CgroupParent: *cgroupParent, MemoryMaxBytes: *memoryMax, DisableSwap: *noSwap, CPUQuotaUS: *cpuQuota, CPUs: *cpus, Mems: *mems, PidsMax: *pidsMax}, Suite: *suite, Profile: *profile, Scenarios: strings.Split(*scenarios, ","), Launches: *launches, Samples: *samples, Operations: *operations, Warmup: *warmup, Seed: *seed, Timeout: *timeout, Check: args[0] == "check"}, runtimes, workloads)
 			if e != nil {
 				return e
 			}

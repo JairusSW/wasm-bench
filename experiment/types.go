@@ -20,6 +20,7 @@ type Runtime struct {
 	Description            *protocol.Description `json:"description,omitempty"`
 }
 type Options struct {
+	TimingPeakRSS           bool          `json:"timing_peak_rss,omitempty"`
 	SustainedPostCollection bool          `json:"sustained_post_collection,omitempty"`
 	SustainedDuration       time.Duration `json:"sustained_duration_ns,omitempty"`
 	// Recomputed from pinned analyzer output on every run; never accepted from JSON.

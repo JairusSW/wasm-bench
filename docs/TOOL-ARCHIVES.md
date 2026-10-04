@@ -138,3 +138,17 @@ Legacy bundles without tool archives cannot recover tools that have already been
 replaced. Hashes and build recipes are evidence, not a substitute for missing exact
 bytes. Source-toolchain build bundles use their separate replay workflow and do
 not yet adopt runtime tool archives.
+
+## Timing trials with peak RSS
+
+Use `run --profile timing --timing-peak-rss` to collect one kernel-accounted
+adapter process lifetime RSS peak from each timing trial's existing wait4 result.
+The flag is locked and cannot override a saved plan. It supports ordinary
+compilation, instantiation, first-call and steady scenarios. Three compilation
+samples produce one trial peak, not three invented memory samples. The peak
+includes startup, setup, verification and all samples; it is not phase-only RSS.
+
+Reports identify these rows with `source_run` and `source_profile: timing`.
+They can retain a separate single-sample steady memory pass for allocator and
+heap metrics without repeating compilation or instantiation. Both source runs
+remain explicit in `memory_source`, and report verification recomputes the join.

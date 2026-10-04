@@ -220,8 +220,22 @@ func (a *adapter) runWasiP1One(scenario string, c *protocol.CommandContract, mou
 	}
 	stdout, stderr := &boundedBuffer{limit: c.OutputLimit}, &boundedBuffer{limit: c.OutputLimit}
 	imports := p1.Imports(p1.Config{Stdin: bytes.NewReader(stdin), Stdout: stdout, Stderr: stderr, Args: append([]string(nil), c.Argv...), Mounts: mounts})
+	readonly, err := readonlyP1OpenOverrides(imports)
+	if err != nil {
+		return 0, protocol.CommandResult{}, err
+	}
+	rt := wago.NewRuntime()
+	defer rt.Close()
+	mod, err := rt.Module(compiled)
+	if err != nil {
+		return 0, protocol.CommandResult{}, err
+	}
+	defer mod.Close()
+	instantiate := func() (*wago.Instance, error) {
+		return rt.Instantiate(context.Background(), mod, wago.WithImports(imports), wago.WithImports(readonly))
+	}
 	if scenario == "compile" {
-		instance, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: imports})
+		instance, err := instantiate()
 		if err != nil {
 			return 0, protocol.CommandResult{}, err
 		}
@@ -235,7 +249,7 @@ func (a *adapter) runWasiP1One(scenario string, c *protocol.CommandContract, mou
 		return compileNS, result, err
 	}
 	start := time.Now()
-	instance, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: imports})
+	instance, err := instantiate()
 	instantiateNS := time.Since(start).Nanoseconds()
 	if err != nil {
 		return 0, protocol.CommandResult{}, err

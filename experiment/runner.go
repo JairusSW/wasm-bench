@@ -116,7 +116,7 @@ func ResolveRuntimes(root string, ids []string) ([]Runtime, error) {
 			r.Files[path] = hash
 		}
 		if id == "v8" || id == "v8-liftoff-only" || id == "v8-optimizing-only" || id == "v8-tier-observed" || id == "v8-tier-traced" {
-			helpers := []string{"floats.mjs", "profiling.mjs", "compiler-mode.mjs", "harness.mjs"}
+			helpers := []string{"floats.mjs", "profiling.mjs", "compiler-mode.mjs", "harness.mjs", "wasi-readonly.mjs"}
 			if id == "v8-tier-observed" || id == "v8-tier-traced" {
 				helpers = []string{"floats.mjs"}
 			}

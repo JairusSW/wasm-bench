@@ -61,7 +61,7 @@ func TestResolveV8UsesPinnedNodeBinary(t *testing.T) {
 	if err := os.MkdirAll(adapterDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"adapter.mjs", "floats.mjs", "profiling.mjs", "compiler-mode.mjs", "harness.mjs"} {
+	for _, name := range []string{"adapter.mjs", "floats.mjs", "profiling.mjs", "compiler-mode.mjs", "harness.mjs", "wasi-readonly.mjs"} {
 		if err := os.WriteFile(filepath.Join(adapterDir, name), []byte("// fixture\n"), 0644); err != nil {
 			t.Fatal(err)
 		}

@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import {WASI} from 'node:wasi';
+import {readonlyWasiImports} from './wasi-readonly.mjs';
 import {profileRun} from './profiling.mjs';
 import * as harness from './harness.mjs';
 import {encodeFloats, verifyFloats, validateFloat, numericSignature, floatArguments} from './floats.mjs';
@@ -123,12 +124,12 @@ function runWasiCommand(compiled,scenario) {
     const wasi=new WASI({version:'preview1',args:c.argv,env:{},preopens:{'/':fixture.root},stdin:fixture.stdinFd,stdout:fixture.stdoutFd,stderr:fixture.stderrFd,returnOnExit:true});
     let created,exitCode,elapsed;
     if(scenario==='instantiate'){
-      const start=now();created=new WebAssembly.Instance(compiled,wasi.getImportObject());elapsed=Number(now()-start);
+      const start=now();created=new WebAssembly.Instance(compiled,readonlyWasiImports(wasi));elapsed=Number(now()-start);
       exitCode=wasi.start(created);
     }else if(scenario==='first-call'){
-      created=new WebAssembly.Instance(compiled,wasi.getImportObject());const start=now();exitCode=wasi.start(created);elapsed=Number(now()-start);
+      created=new WebAssembly.Instance(compiled,readonlyWasiImports(wasi));const start=now();exitCode=wasi.start(created);elapsed=Number(now()-start);
     }else if(scenario==='steady'){
-      const start=now();created=new WebAssembly.Instance(compiled,wasi.getImportObject());exitCode=wasi.start(created);elapsed=Number(now()-start);
+      const start=now();created=new WebAssembly.Instance(compiled,readonlyWasiImports(wasi));exitCode=wasi.start(created);elapsed=Number(now()-start);
     }else throw new Error(`unsupported WASI command scenario: ${scenario}`);
     const stdout=fs.readFileSync(fixture.stdoutPath),stderr=fs.readFileSync(fixture.stderrPath);
     if(stdout.length>c.output_limit_bytes||stderr.length>c.output_limit_bytes)throw new Error(`WASI output exceeds ${c.output_limit_bytes} bytes per stream`);

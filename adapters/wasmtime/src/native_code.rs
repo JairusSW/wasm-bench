@@ -91,6 +91,10 @@ pub fn materialized(module: &Module, wasm: &[u8], winch: bool, elapsed: u64) -> 
 }
 
 pub fn inspect(module: &Module, wasm: &[u8], winch: bool) -> Result<Value> {
+    inspect_with_budget(module, wasm, winch, 16 << 20)
+}
+
+fn inspect_with_budget(module: &Module, wasm: &[u8], winch: bool, budget: usize) -> Result<Value> {
     let text = module.text();
     let backend = if winch { "winch" } else { "cranelift" };
     let functions: Vec<Value> = module
@@ -106,9 +110,10 @@ pub fn inspect(module: &Module, wasm: &[u8], winch: bool) -> Result<Value> {
     let mut result = json!({"diagnostics":[
         super::observation("artifact.serialized",module.serialize()?.len(),"compiled_module","compile","code"),
         super::observation("native.function_range_bytes",bytes,"guest_function_ranges","compile","code"),
+        {"metric":"native.code_size","definition_version":1,"value":text.len(),"unit":"bytes","scope":"compiled_module","phase":"compile","collector":"Wasmtime/Module::text","collector_version":"46.0.1","quality":"engine_reported","profile":"code","status":"available","reason":"Complete native text size, including embedded constants, padding and shared module trampolines; independent of the native image transport limit","normalization_denominator":"module"},
         {"metric":"native.guest_code","definition_version":1,"unit":"bytes","scope":"guest_function_code","phase":"compile","collector":"wasmtime","collector_version":"46.0.1","quality":"engine_reported","profile":"code","status":"unsupported","reason":"function ranges can include embedded constants and padding; instruction-only bytes are not exposed","normalization_denominator":"module"}
     ]});
-    if text.len() > 16 << 20 {
+    if text.len() > budget {
         result["diagnostics"].as_array_mut().unwrap().push(json!({
             "metric":"native.code_export","definition_version":1,"unit":"bytes","scope":"compiled_module","phase":"compile","collector":"wasmtime","collector_version":"46.0.1","quality":"engine_reported","profile":"code","status":"unavailable","reason":"native text exceeds 16 MiB transport budget","normalization_denominator":"module"
         }));
@@ -129,6 +134,23 @@ pub fn inspect(module: &Module, wasm: &[u8], winch: bool) -> Result<Value> {
 mod tests {
     use super::*;
     #[test]
+    fn image_budget_does_not_suppress_complete_native_size() -> Result<()> {
+        let wasm = hex::decode("0061736d010000000105016000017f030201000707010372756e00000a0601040041070b").unwrap();
+        let adapter = crate::Adapter { prep: None, bytes: wasm.clone(), winch: false };
+        let module = Module::new(&adapter.engine()?, &wasm)?;
+        assert!(!module.text().is_empty());
+        let result = inspect_with_budget(&module, &wasm, false, 0)?;
+        assert!(result["code_image"].is_null());
+        let diagnostics = result["diagnostics"].as_array().unwrap();
+        let size = diagnostics.iter().find(|d| d["metric"] == "native.code_size").unwrap();
+        assert_eq!(size["status"], "available");
+        assert_eq!(size["value"].as_u64(), Some(module.text().len() as u64));
+        let export = diagnostics.iter().find(|d| d["metric"] == "native.code_export").unwrap();
+        assert_eq!(export["status"], "unavailable");
+        Ok(())
+    }
+
+    #[test]
     fn both_backends_export_defined_indices_not_imports() -> Result<()> {
         let wasm=hex::decode("0061736d010000000105016000017f020701016d0166000003020100070501016700010a0601040041070b").unwrap();
         for winch in [false, true] {
@@ -141,6 +163,9 @@ mod tests {
             let result = inspect(&module, &wasm, winch)?;
             let image = &result["code_image"];
             assert_eq!(image["version"], 2);
+            let size = result["diagnostics"].as_array().unwrap().iter().find(|d| d["metric"] == "native.code_size").unwrap();
+            assert_eq!(size["status"], "available");
+            assert_eq!(size["value"].as_u64(), Some(module.text().len() as u64));
             let functions = image["functions"].as_array().unwrap();
             assert_eq!(functions.len(), 1);
             assert_eq!(functions[0]["wasm_index"], 1);

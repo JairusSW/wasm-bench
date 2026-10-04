@@ -174,6 +174,45 @@
     const base = pointer(target, w.oracle.output_pointer_export);
     for (const check of w.oracle.memory || []) { const expected = hex(check.hex), actual = memory(target, base + check.offset, expected.length); if (actual.some((x,i) => x !== expected[i])) throw Error('incorrect result: memory oracle mismatch'); }
   }
+  function vectorCases(w) {
+    const v=w.vectors;
+    if (w.oracle.kind!=='exact_vectors' || w.reset!=='fresh_instance_per_sample' || w.host_profile || w.input || w.initialize || (w.args||[]).length || (w.oracle.expected||[]).length || (w.oracle.memory||[]).length || w.oracle.output_pointer_export) unsupported('ambiguous vector contract');
+    if (!v || !Array.isArray(v.cases) || !v.cases.length || v.cases.length>100000 || !Number.isSafeInteger(w.vector_byte_budget) || w.vector_byte_budget<0 || w.vector_byte_budget>64*1024*1024 || !Number.isInteger(v.output_len) || v.output_len<1 || v.output_len>0xffffffff) throw Error('invalid vector dimensions/budget');
+    const mod=v.mod||0;
+    if (!Number.isSafeInteger(mod) || mod<0) throw Error('invalid vector modulus');
+    for (const x of [v.input_offset,v.output_offset]) if (!Number.isInteger(x) || x<0 || x>0xffffffff) throw Error('invalid vector offset');
+    let total=0;
+    for (const c of v.cases) {
+      if (!Number.isInteger(c.len) || c.len<0 || c.len>0xffffffff || typeof c.out!=='string' || c.out.length!==v.output_len*2 || !/^(?:[0-9a-fA-F]{2})+$/.test(c.out)) throw Error('invalid vector case');
+      total+=c.len+v.output_len;
+      if (!Number.isSafeInteger(total) || total>w.vector_byte_budget) throw Error('vector byte budget exceeded');
+    }
+    return v.cases.map(c=>({input:Uint8Array.from({length:c.len},(_,i)=>mod?(i%mod)&255:0),expected:hex(c.out)}));
+  }
+  function runVectors(r) {
+    if (r.operations!==1 || r.phase_barriers) unsupported('vector sequences require one operation and no barriers');
+    const w=prep.workload,v=w.vectors,cases=vectorCases(w),samples=[];
+    const shared=r.scenario==='compile'?undefined:new WebAssembly.Module(bytes);
+    const warmup=r.scenario==='steady'?r.warmup:0;
+    for (let i=0;i<warmup+r.samples;i++) {
+      let module=shared,elapsed=0;
+      if (r.scenario==='compile') {const start=now();module=new WebAssembly.Module(bytes);elapsed=now()-start;}
+      const start=now(),target=new WebAssembly.Instance(module);
+      if (r.scenario==='instantiate') elapsed=now()-start;
+      const input=v.input_ptr_export?pointer(target,v.input_ptr_export):v.input_offset;
+      const output=v.output_ptr_export?pointer(target,v.output_ptr_export):v.output_offset;
+      for (const c of cases) {
+        memory(target,input,c.input.length).set(c.input);
+        if (r.scenario==='steady' || r.scenario==='first-call') {const start=now();target.exports[w.export](input,c.input.length,output);elapsed+=now()-start;}
+        else target.exports[w.export](input,c.input.length,output);
+        if (memory(target,output,c.expected.length).some((x,j)=>x!==c.expected[j])) throw Error('incorrect result: vector memory mismatch');
+      }
+      elapsed=Math.round(elapsed);
+      if (!Number.isSafeInteger(elapsed) || elapsed<0) throw Error('invalid elapsed clock interval');
+      samples.push({index:i,warmup:i<warmup,elapsed_ns:elapsed,operations:1,sample_type:['steady','first-call'].includes(r.scenario)?'sequence_call_sum':'individual_operation',verified:true});
+    }
+    return {samples};
+  }
   async function barrier(req, index, stage) {
     await write({version:1,id:req.id,status:'phase',phase:{sample_index:index,stage}});
     const raw = await line(); if (!raw) throw Error('missing phase acknowledgement');
@@ -194,7 +233,7 @@
         ...(runtime==='spidermonkey'&&tierMode==='ion-only'?{wasm_compiler:'Ion only',tiering:'baseline disabled; Ion selected at compile time',flags:'--wasm-compiler=ion'}:{}),
         ...(runtime==='deno'&&tierMode==='optimizing-only'?{compiler_mode:'optimizing-only',tiering:'no Liftoff; eager optimizing compilation; tier-up disabled',flags:'--allow-natives-syntax --no-liftoff --no-wasm-tier-up --no-wasm-lazy-compilation',compiler_mode_probe:JSON.stringify(tierProbe)}:{}),
         ...(runtime==='jsc'&&tierMode==='omg-eager'?{tiering:'IPInt → BBQ → OMG tier-up forced after warmup; synchronous OMG compilation',warmup_minimum:'2',flags:'thresholdForBBQOptimizeAfterWarmUp=1 thresholdForBBQOptimizeSoon=1 thresholdForOMGOptimizeAfterWarmUp=1 thresholdForOMGOptimizeSoon=1 useConcurrentJIT=false numberOfWasmCompilerThreads=0',tier_probe:JSON.stringify(tierProbe)}:{})},
-      capabilities:{can_compile_separately:true,can_instantiate_separately:true},
+      capabilities:{can_compile_separately:true,can_instantiate_separately:true,can_run_vectors:true},
       scenarios,abis:['core'],features:['mvp'],phase_barrier_scenarios:scenarios,
       phase_release_policy:'drop JS references only; no physical reclamation or engine disposal claim'
     }};
@@ -202,7 +241,7 @@
     if (req.method === 'prepare') {
       prep = bytes = signature = undefined;
       const p = req.prepare, w = p?.workload;
-      if (!w || !['timing','memory'].includes(p.profile) || w.abi !== 'core' || !['stateless','fresh_instance_per_sample'].includes(w.reset) || w.oracle?.kind !== 'exact_u64' || !Array.isArray(w.oracle.expected) || !w.export || (w.host_profile && !['identity-v1','assemblyscript-abort-v1'].includes(w.host_profile)) || w.command || w.vectors || w.density || w.checkpoint || w.continuation || w.process_snapshot || w.guest_density || w.snapshot_density || w.oracle.float || w.oracle.expected_trap) unsupported('only core integer scalar timing/memory contracts with identity-v1 or assemblyscript-abort-v1 imports are supported');
+      if (!w || !['timing','memory'].includes(p.profile) || w.abi !== 'core' || !['stateless','fresh_instance_per_sample'].includes(w.reset) || !['exact_u64','exact_vectors'].includes(w.oracle?.kind) || !Array.isArray(w.oracle.expected) || !w.export || (w.host_profile && !['identity-v1','assemblyscript-abort-v1'].includes(w.host_profile)) || w.command || Boolean(w.vectors)!==(w.oracle.kind==='exact_vectors') || w.density || w.checkpoint || w.continuation || w.process_snapshot || w.guest_density || w.snapshot_density || w.oracle.float || w.oracle.expected_trap) unsupported('only core integer scalar timing/memory contracts with identity-v1 or assemblyscript-abort-v1 imports are supported');
       const data = readBytes(p.artifact);
       if (sha256(data) !== p.artifact_sha256) throw Error('artifact digest mismatch');
       const probeModule = new WebAssembly.Module(data);
@@ -218,10 +257,11 @@
         const ptr = numericSignature(data,name);
         if (ptr.params.length || ptr.results.length !== 1 || ptr.results[0] !== 127) unsupported('pointer export must have () -> i32 signature');
       }
-      if (w.oracle.expected.length !== sig.results.length) throw Error('oracle result count mismatch');
+      if (!w.vectors && w.oracle.expected.length !== sig.results.length) throw Error('oracle result count mismatch');
       w.oracle.expected.forEach(canonical);
+      if (w.vectors) { vectorCases(w); if (sig.params.join(',')!=='127,127,127' || (sig.results.length && sig.results.join(',')!=='127')) unsupported('vector export requires three i32 parameters and zero or one i32 result; output bytes are the oracle'); }
       prep = p; bytes = data; signature = sig;
-      try { callArgs(); } catch(error) { prep = bytes = signature = undefined; throw error; }
+      try { if (!w.vectors) callArgs(); } catch(error) { prep = bytes = signature = undefined; throw error; }
       return {};
     }
     if (req.method === 'run') {
@@ -232,6 +272,7 @@
       const freshSteady = r.scenario === 'steady' && prep.workload.reset === 'fresh_instance_per_sample';
       if (freshSteady && r.operations !== 1) unsupported('fresh-instance steady samples require one operation');
       if (r.scenario !== 'steady' && (r.operations !== 1 || r.warmup !== 0)) unsupported('lifecycle samples require one operation and zero warmup');
+      if (prep.workload.vectors) return runVectors(r);
       const args = callArgs(), warmup = r.scenario === 'steady' ? Math.max(r.warmup, runtime==='jsc'&&tierMode==='omg-eager'?2:0) : 0, samples = [];
       let compiled = r.scenario === 'compile' ? undefined : new WebAssembly.Module(bytes);
       const imports=importsFor(prep.workload);

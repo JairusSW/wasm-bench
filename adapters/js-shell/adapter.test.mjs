@@ -102,3 +102,31 @@ test('fresh steady isolates mutable guest state before every sample',async()=>{
   assert.equal(out[1].samples.filter(s=>!s.warmup).length,3);
   assert.ok(out[1].samples.every(s=>s.verified && s.result[0]==='1'));
 });
+
+function vectorFixture() {
+  const section=(id,data)=>[id,...leb(data.length),...data];
+  const body=[0,32,2,32,1,58,0,0,11];
+  return Buffer.from([0,97,115,109,1,0,0,0,
+    ...section(1,[1,96,3,127,127,127,0]),...section(3,[1,0]),...section(5,[1,0,1]),
+    ...section(7,[2,3,114,117,110,0,0,6,109,101,109,111,114,121,2,0]),
+    ...section(10,[1,...leb(body.length),...body])]);
+}
+const vectorWork=()=>({abi:'core',reset:'fresh_instance_per_sample',export:'run',args:[],oracle:{kind:'exact_vectors',expected:[]},vector_byte_budget:8,vectors:{input_offset:0,output_offset:100,output_len:1,mod:251,cases:[{len:0,out:'00'},{len:3,out:'03'}]}});
+test('vector lifecycle and execution sequences verify each case',async()=>{
+  const bytes=vectorFixture();
+  for(const scenario of ['compile','instantiate','first-call','steady']) {
+    const out=await session([prepare(bytes,vectorWork()),{method:'run',run:{scenario,samples:3,operations:1,warmup:scenario==='steady'?2:0}}],bytes);
+    assert.equal(out[0].status,'ok',JSON.stringify(out[0]));assert.equal(out[1].status,'ok',JSON.stringify(out[1]));
+    assert.equal(out[1].samples.filter(s=>!s.warmup).length,3);assert.ok(out[1].samples.every(s=>s.verified));
+  }
+});
+test('vector wrong output, memory bounds and byte budget cannot yield samples',async()=>{
+  const bytes=vectorFixture();
+  for(const mutate of [w=>w.vectors.cases[1].out='04',w=>w.vectors.output_offset=65536]) {
+    const w=vectorWork();mutate(w);const out=await session([prepare(bytes,w),{method:'run',run:{scenario:'steady',samples:1,operations:1,warmup:0}}],bytes);
+    assert.equal(out[1].status,'error');assert.equal(out[1].samples,undefined);
+  }
+  const w=vectorWork();w.vector_byte_budget=1;assert.equal((await session([prepare(bytes,w)],bytes))[0].status,'error');
+});
+
+test('describe declares measured vector lifecycle support',async()=>{const [r]=await session([{method:'describe'}]);assert.equal(r.description.capabilities.can_run_vectors,true);assert.equal(r.description.capabilities.can_vector_compile_phases,undefined);});

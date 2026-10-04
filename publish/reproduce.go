@@ -37,7 +37,7 @@ func reportReplayPasses(source string) ([]reportReplayPass, error) {
 		return nil, err
 	}
 	passes := []reportReplayPass{{Name: "primary", Source: filepath.Join(source, "raw")}}
-	if d.MemorySource != nil {
+	if d.MemorySource != nil && d.MemorySource.Profile == "memory" {
 		passes = append(passes, reportReplayPass{Name: "memory", Source: filepath.Join(source, "raw-memory")})
 	}
 	if d.CodeSource != nil {

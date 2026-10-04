@@ -44,7 +44,7 @@ func BuildWago(ctx context.Context, root, source string) error {
 		return e
 	}
 	modfile := filepath.Join(buildDir, "wago.mod")
-	content := fmt.Sprintf("module github.com/wasmbench/wasmbench/adapters/wago\n\ngo 1.26.0\n\nrequire (\n github.com/wago-org/wago v0.0.0\n github.com/wasmbench/wasmbench v0.0.0\n)\nreplace github.com/wago-org/wago => %s\nreplace github.com/wasmbench/wasmbench => %s\n", strconv.Quote(source), strconv.Quote(root))
+	content := fmt.Sprintf("module github.com/wasmbench/wasmbench/adapters/wago\n\ngo 1.26.0\n\nrequire (\n github.com/wago-org/wago v0.0.0\n github.com/wago-org/wasi v0.3.1\n github.com/wago-org/component-model v0.1.6\n github.com/wasmbench/wasmbench v0.0.0\n)\nreplace github.com/wago-org/wago => %s\nreplace github.com/wasmbench/wasmbench => %s\n", strconv.Quote(source), strconv.Quote(root))
 	if e = os.WriteFile(modfile, []byte(content), 0644); e != nil {
 		return e
 	}

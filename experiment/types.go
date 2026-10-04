@@ -32,6 +32,8 @@ type Options struct {
 	Scenarios                 []string             `json:"scenarios"`
 	Launches                  int                  `json:"launches"`
 	Samples                   int                  `json:"samples"`
+	Workers                   int                  `json:"workers,omitempty"`
+	ScenarioSamples           map[string]int       `json:"scenario_samples,omitempty"`
 	Operations                int                  `json:"operations"`
 	Warmup                    int                  `json:"warmup"`
 	Seed                      int64                `json:"seed"`

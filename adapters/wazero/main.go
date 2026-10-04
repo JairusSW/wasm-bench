@@ -324,7 +324,7 @@ func (a *adapter) run(r *protocol.RunRequest) ([]protocol.Sample, error) {
 	if !slices.Contains([]string{"engine-init", "compile", "instantiate", "first-call", "steady", "trajectory", "teardown"}, r.Scenario) {
 		return nil, fmt.Errorf("unsupported scenario")
 	}
-	if r.Scenario != "engine-init" {
+	if r.Scenario != "engine-init" && r.Scenario != "compile" {
 		if err := a.setup(); err != nil {
 			return nil, err
 		}
@@ -415,6 +415,14 @@ func (a *adapter) run(r *protocol.RunRequest) ([]protocol.Sample, error) {
 					err = a.checkEngine(e)
 					e.Close(ctx)
 				case "compile":
+					// Wazero retains compiled code in the runtime after a module
+					// handle closes. Give every sample its own empty runtime so
+					// measured calls cannot hit the per-runtime module cache.
+					a.close()
+					a.engine = a.newEngine()
+					if e := a.registerHostImports(); e != nil {
+						return nil, e
+					}
 					start := time.Now()
 					m, e := a.engine.CompileModule(ctx, a.wasm)
 					elapsed += time.Since(start).Nanoseconds()
@@ -507,7 +515,7 @@ func main() {
 				if info, ok := debug.ReadBuildInfo(); ok {
 					build = info.String()
 				}
-				resp.Description = &protocol.Description{Runtime: "wazero", Version: "1.12.0", Backend: backend, Embedding: "Go API", Build: build, Configuration: map[string]string{"compilation_cache": "disabled", "context_termination": "enabled", "start_functions": "explicit_disabled", "backend": backend}, Capabilities: map[string]bool{"can_compile_separately": true, "can_instantiate_separately": true, "can_disable_code_cache": true, "can_measure_host_allocations": true, "can_export_native_code": false, "can_observe_tiers": false, "can_snapshot": false}, Scenarios: []string{"engine-init", "compile", "instantiate", "first-call", "steady", "trajectory", "teardown"}, ABIs: []string{"core"}, Features: []string{"mvp", "bulk-memory", "simd", "reference-types", "multi-value"}}
+				resp.Description = &protocol.Description{Runtime: "wazero", Version: "1.12.0", Backend: backend, Embedding: "Go API", Build: build, Configuration: map[string]string{"compilation_cache": "disabled", "compile_policy": "fresh uncached module per operation; empty runtime prepared outside timer; verification, module close and instance close outside timer; no untimed retained module", "context_termination": "enabled", "start_functions": "explicit_disabled", "backend": backend}, Capabilities: map[string]bool{"can_compile_separately": true, "can_instantiate_separately": true, "can_disable_code_cache": true, "can_measure_host_allocations": true, "can_export_native_code": false, "can_observe_tiers": false, "can_snapshot": false}, Scenarios: []string{"engine-init", "compile", "instantiate", "first-call", "steady", "trajectory", "teardown"}, ABIs: []string{"core"}, Features: []string{"mvp", "bulk-memory", "simd", "reference-types", "multi-value"}}
 				resp.Description.Scenarios = append(resp.Description.Scenarios, "app-init")
 				resp.Description.Scenarios = append(resp.Description.Scenarios, protocol.HarnessCalibrationScenario)
 				resp.Description.Configuration["harness_calibration_policy"] = protocol.HarnessCalibrationPolicy

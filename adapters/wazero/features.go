@@ -11,6 +11,8 @@ func validatorFeaturePolicy() *protocol.ValidatorFeaturePolicy {
 		Supported: map[string]bool{
 			"THREADS": false, "TAIL_CALL": false, "EXTENDED_CONST": false,
 			"EXCEPTIONS": false, "FUNCTION_REFERENCES": false,
+            "RELAXED_SIMD": false, "GC": false, "MEMORY64": false,
+            "MULTI_MEMORY": false, "STACK_SWITCHING": false, "LEGACY_EXCEPTIONS": false,
 		},
 	}
 }

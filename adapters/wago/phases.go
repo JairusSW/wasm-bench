@@ -25,7 +25,7 @@ func (a *adapter) compilePhases(r *protocol.RunRequest) ([]protocol.Sample, erro
 			runtime.ReadMemStats(&before)
 		}
 		start := time.Now()
-		compiled, err := wago.Compile(nil, a.wasm)
+		compiled, err := wago.Compile(a.compileConfig, a.wasm)
 		elapsed := time.Since(start).Nanoseconds()
 		if a.prep.Profile == "memory" {
 			runtime.ReadMemStats(&after)

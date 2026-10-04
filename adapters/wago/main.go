@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	wago "github.com/wago-org/wago"
 	"github.com/wasmbench/wasmbench/adapters/harness"
@@ -16,21 +17,29 @@ import (
 	"runtime"
 	"runtime/debug"
 	"slices"
+	"strings"
 	"time"
+
+	component "github.com/wago-org/component-model"
+	wagoplugin "github.com/wago-org/wago/plugin"
 )
 
 var sourceRevision = "unknown"
 
 type adapter struct {
-	barrier      func(protocol.PhaseEvent) error
-	prep         *protocol.Preparation
-	wasm         []byte
-	compiled     *wago.Compiled
-	instance     *wago.Instance
-	fn           *wago.WasmFunc
-	imports      *wago.Imports
-	hostRuntime  *wago.Runtime
-	hostIdentity *wago.HostFuncRef
+	barrier          func(protocol.PhaseEvent) error
+	prep             *protocol.Preparation
+	wasm             []byte
+	compileConfig    *wago.RuntimeConfig
+	compiled         *wago.Compiled
+	instance         *wago.Instance
+	fn               *wago.WasmFunc
+	imports          *wago.Imports
+	hostRuntime      *wago.Runtime
+	hostIdentity     *wago.HostFuncRef
+	componentRuntime *wago.Runtime
+	componentRef     *wagoplugin.Ref[component.Service]
+	componentCache   *component.CompileCache
 }
 
 func (a *adapter) close() {
@@ -46,6 +55,15 @@ func (a *adapter) close() {
 }
 func (a *adapter) closeAll() {
 	a.close()
+	if a.componentCache != nil {
+		_ = a.componentCache.Close(context.Background())
+		a.componentCache = nil
+	}
+	a.componentRef = nil
+	if a.componentRuntime != nil {
+		_ = a.componentRuntime.Close()
+		a.componentRuntime = nil
+	}
 	if a.hostIdentity != nil {
 		a.hostIdentity.Close()
 		a.hostIdentity = nil
@@ -108,7 +126,7 @@ func (a *adapter) fresh() error {
 func (a *adapter) setup() error {
 	if a.compiled == nil {
 		var e error
-		a.compiled, e = wago.Compile(nil, a.wasm)
+		a.compiled, e = wago.Compile(a.compileConfig, a.wasm)
 		if e != nil {
 			return e
 		}
@@ -212,6 +230,9 @@ func (a *adapter) run(r *protocol.RunRequest) ([]protocol.Sample, error) {
 			return nil, err
 		}
 		return harness.Run(a.prep, r)
+	}
+	if a.prep.Workload.Command != nil || a.prep.Workload.ABI == "component" {
+		return a.runPluginFeature(r)
 	}
 	if a.prep.Profile == "counters" {
 		if err := protocol.ValidateCounterRun(a.prep, r); err != nil {
@@ -347,7 +368,7 @@ func (a *adapter) run(r *protocol.RunRequest) ([]protocol.Sample, error) {
 				switch r.Scenario {
 				case "compile":
 					start := time.Now()
-					c, e := wago.Compile(nil, a.wasm)
+					c, e := wago.Compile(a.compileConfig, a.wasm)
 					elapsed += time.Since(start).Nanoseconds()
 					if e != nil {
 						return nil, e
@@ -385,7 +406,7 @@ func (a *adapter) run(r *protocol.RunRequest) ([]protocol.Sample, error) {
 					elapsed += time.Since(start).Nanoseconds()
 				case "aot-produce":
 					start := time.Now()
-					c, e := wago.Compile(nil, a.wasm)
+					c, e := wago.Compile(a.compileConfig, a.wasm)
 					if e != nil {
 						return nil, e
 					}
@@ -464,7 +485,7 @@ func main() {
 				if info, ok := debug.ReadBuildInfo(); ok {
 					build = info.String()
 				}
-				resp.Description = &protocol.Description{Runtime: "wago", Version: sourceRevision, Backend: "railshot", Embedding: "Go API / WasmFunc.Invoke", Build: build, Configuration: map[string]string{"runtime_config": fmt.Sprint(wago.NewRuntimeConfig()), "module_cache": "disabled", "source_revision": sourceRevision}, Capabilities: map[string]bool{"can_compile_separately": true, "can_instantiate_separately": true, "can_disable_code_cache": true, "can_measure_host_allocations": true, "can_export_native_code": false, "can_snapshot": false, "can_observe_tiers": false}, Scenarios: []string{"compile", "instantiate", "first-call", "steady", "trajectory", "teardown", "aot-produce", "aot-load"}, ABIs: []string{"core"}, Features: []string{"mvp", "bulk-memory", "simd"}}
+				resp.Description = &protocol.Description{Runtime: "wago", Version: sourceRevision, Backend: "railshot", Embedding: "Go API / Wago WASI and Component Model plugin implementations", Build: build, Configuration: map[string]string{"runtime_config": "Wago defaults; maxModuleBytes is set to the exact prepared artifact size per workload", "compile_module_byte_limit": "exact workload artifact size; Wago's 64 MiB default does not reject larger benchmark artifacts", "module_cache": "disabled", "wasi_preview1": "wago-org/wasi v0.3.1 P1 provider host imports; explicit readonly fixture mount and guest argv/streams", "wasi_preview2": "wago-org/wasi v0.3.1 P2 host options through the Component Model plugin service", "component_model": "wago-org/component-model v0.1.6 loaded through Wago plugin contract", "component_compile_cache": "retained only within a feature timing request", "source_revision": sourceRevision}, Capabilities: map[string]bool{"can_compile_separately": true, "can_instantiate_separately": true, "can_disable_code_cache": true, "can_measure_host_allocations": true, "can_export_native_code": false, "can_snapshot": false, "can_observe_tiers": false, "can_run_commands": true, "can_run_component_commands": true, "can_component_command_lifecycle": true, "can_component_u64_calls_v1": true}, Scenarios: []string{"compile", "instantiate", "first-call", "steady", "trajectory", "teardown", "aot-produce", "aot-load"}, ABIs: []string{"core", "wasi-command", "component"}, Features: []string{"mvp", "bulk-memory", "simd", "wasi-preview1", "wasi-preview2", "component-model"}}
 				resp.Description.Scenarios = append(resp.Description.Scenarios, "app-init")
 				resp.Description.Scenarios = append(resp.Description.Scenarios, protocol.HarnessCalibrationScenario)
 				resp.Description.Configuration["harness_calibration_policy"] = protocol.HarnessCalibrationPolicy
@@ -480,6 +501,7 @@ func main() {
 				resp.Description.Configuration["counter_first_call_policy"] = "fresh initialized instance per sample; compiled module retained; exactly one requested call, no hidden verification pre-call; setup/input/export resolution before counter window, verification/result copy/release after; no memory instrumentation"
 				resp.Description.Configuration["counter_policy"] = "core exact scalar compile/instantiate phase handshakes; one operation, no warmup; no allocator snapshots; perf collected externally over cgroup barrier window including transport/background work; verification and release excluded"
 				resp.Description.Configuration["density_policy"] = "Runtime.Compile/Instantiate: fresh simultaneous group; shared_module one runtime/module; separate_engines fresh runtime and compilation per instance; timer includes engine construction, compile, instantiate/start, initialization, input and workload invocation; verification and release excluded; release waits Runtime.CloseContext and Module.Close; no forced GC"
+				resp.Description.ValidatorFeatures = &protocol.ValidatorFeaturePolicy{Namespace: "wasmparser/0.251.0", Evidence: "Pinned Wago release implements standardized exception handling, but not the legacy EXCEPTIONS proposal; proposal continuation types are also unavailable", Supported: map[string]bool{"EXCEPTIONS": false, "STACK_SWITCHING": false}}
 				resp.Description.Capabilities["can_export_native_code"] = true
 				resp.Description.Capabilities["can_verify_float_bits_v1"] = true
 				resp.Description.Capabilities["can_float_phases"] = true
@@ -524,17 +546,38 @@ func main() {
 						break
 					}
 					a.imports = wago.NewImports().Function("env", "abort", a.hostIdentity)
-				} else if a.prep.Workload.HostProfile != "" {
+				} else if a.prep.Workload.HostProfile != "" && a.prep.Workload.ABI != "wasi-command" && a.prep.Workload.ABI != "component" {
 					e = fmt.Errorf("unsupported host profile")
 					break
 				}
-				if a.prep.Workload.ABI != "core" {
+				switch a.prep.Workload.ABI {
+				case "core":
+				case "wasi-command":
+					if a.prep.Workload.Command == nil {
+						e = fmt.Errorf("WASI command ABI requires a command contract")
+						break
+					}
+				case "component":
+					a.componentRuntime, e = loadComponentPluginRuntime(&a.componentRef)
+					if e != nil {
+						break
+					}
+					a.componentCache = component.NewCompileCache()
+				default:
 					e = fmt.Errorf("unsupported ABI")
+					break
+				}
+				if e != nil {
 					break
 				}
 				a.wasm, e = os.ReadFile(a.prep.Artifact)
 				if e == nil && corpus.Hash(a.wasm) != a.prep.ArtifactSHA256 {
 					e = fmt.Errorf("artifact digest mismatch")
+				}
+				if e == nil {
+					// Keep Wago's normal runtime defaults while allowing the source-built
+					// 100 MiB Swift-format module; the cap follows the measured artifact.
+					a.compileConfig = wago.NewRuntimeConfig().WithMaxModuleBytes(uint64(len(a.wasm)))
 				}
 			case "run":
 				a.barrier = func(event protocol.PhaseEvent) error { return protocol.Barrier(scanner, enc, req.ID, event) }
@@ -561,6 +604,16 @@ func main() {
 			default:
 				e = fmt.Errorf("unknown method")
 			}
+		}
+		var unsupported unsupportedRequest
+		if errors.As(e, &unsupported) {
+			resp.Status = "unsupported"
+			resp.Reason = unsupported.Error()
+			e = nil
+		} else if e != nil && strings.HasPrefix(e.Error(), "unsupported: ") {
+			resp.Status = "unsupported"
+			resp.Reason = strings.TrimPrefix(e.Error(), "unsupported: ")
+			e = nil
 		}
 		if e != nil {
 			resp.Status = "error"

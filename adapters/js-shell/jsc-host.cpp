@@ -1,5 +1,5 @@
-// Raw JavaScriptCore embedding for macOS. Supplies a monotonic clock absent
-// from the system jsc shell. All WebAssembly and JSON work stays in this PID.
+// Raw JavaScriptCore embedding for macOS and Linux. Supplies a monotonic clock
+// and keeps WebAssembly/JSON work in this PID for both native hosts.
 #include <JavaScriptCore/JavaScript.h>
 #include <chrono>
 #include <fstream>
@@ -9,6 +9,7 @@
 #include <vector>
 #include <cstdlib>
 #include <cstring>
+#include <unistd.h>
 static JSValueRef string(JSContextRef c,const std::string& s){auto text=JSStringCreateWithUTF8CString(s.c_str());auto v=JSValueMakeString(c,text);JSStringRelease(text);return v;}
 static std::string text(JSContextRef c,JSValueRef v,JSValueRef* error){auto s=JSValueToStringCopy(c,v,error);if(!s)return {};std::string out(JSStringGetMaximumUTF8CStringSize(s),'\0');out.resize(JSStringGetUTF8CString(s,out.data(),out.size())-1);JSStringRelease(s);return out;}
 static JSValueRef print(JSContextRef c,JSObjectRef,JSObjectRef,size_t n,const JSValueRef v[],JSValueRef* e){if(n)std::cout<<text(c,v[0],e)<<'\n'<<std::flush;return JSValueMakeUndefined(c);}
@@ -23,6 +24,25 @@ static JSValueRef readBytes(JSContextRef c,JSObjectRef,JSObjectRef,size_t n,cons
 }
 int main(int argc,char** argv){
     if(argc<2){std::cerr<<"usage: adapter-jsc SCRIPT runtime=jsc binary-sha256=...\n";return 2;}
+    for(int i=2;i<argc;i++)if(std::string(argv[i])=="tier-mode=omg-eager"){
+        setenv("JSC_validateOptions","true",1);
+        setenv("JSC_thresholdForBBQOptimizeAfterWarmUp","1",1);
+        setenv("JSC_thresholdForBBQOptimizeSoon","1",1);
+        setenv("JSC_thresholdForOMGOptimizeAfterWarmUp","1",1);
+        setenv("JSC_thresholdForOMGOptimizeSoon","1",1);
+        setenv("JSC_useConcurrentJIT","false",1);
+        setenv("JSC_numberOfWasmCompilerThreads","0",1);
+        setenv("JSC_dumpOMGDisassembly","true",1);
+        // JavaScriptCore reads option environment variables during process
+        // initialization, before main(). Re-exec once so the requested tier
+        // policy is active before the framework is loaded.
+        if(std::getenv("WASMBENCH_JSC_OPTIONS_READY")==nullptr){
+            setenv("WASMBENCH_JSC_OPTIONS_READY","1",1);
+            execvp(argv[0],argv);
+            std::perror("re-exec JSC with benchmark options");
+            return 127;
+        }
+    }
     std::ifstream file(argv[1]);if(!file){std::cerr<<"cannot read script\n";return 2;}std::ostringstream source;source<<file.rdbuf();
     auto context=JSGlobalContextCreate(nullptr);auto global=JSContextGetGlobalObject(context);JSValueRef error=nullptr;
     const std::pair<const char*,JSObjectCallAsFunctionCallback> functions[]={{"print",print},{"readline",readline},{"read",readBytes},{"benchNow",now}};

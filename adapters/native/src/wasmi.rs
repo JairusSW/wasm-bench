@@ -17,15 +17,13 @@ impl Engine {
     }
     pub fn compile(&self, bytes: &[u8]) -> Result<Module> {
         let module = wasmi::Module::new(&self.0, bytes)?;
-        ensure!(
-            module.imports().len() == 0,
-            "unsupported: import-free modules only"
-        );
         Ok(Module(module))
     }
     pub fn instantiate(&self, module: &Module) -> Result<Instance> {
         let mut store = Store::new(&self.0, ());
-        let instance = Linker::new(&self.0).instantiate_and_start(&mut store, &module.0)?;
+        let mut linker = Linker::new(&self.0);
+        linker.func_wrap("wasmbench", "identity", |value: i32| value)?;
+        let instance = linker.instantiate_and_start(&mut store, &module.0)?;
         Ok(Instance { store, instance })
     }
 }

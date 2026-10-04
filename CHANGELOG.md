@@ -5,6 +5,14 @@ has been published yet; development changes belong under Unreleased.
 
 ## [Unreleased]
 
+### Changed
+
+- New CLI experiments no longer copy runtime tools by default; exact-tool archives
+  are opt-in with `--archive-tools=true`. Existing locks retain their policy.
+- macOS tool/restoration and primary report copies use copy-on-write where
+  supported. Added a verified local compaction recipe for duplicate archived
+  tools without deleting results or breaking replay paths.
+
 ### Added
 
 - Direct V8 shell, SpiderMonkey, raw JavaScriptCore, Deno, wasmi, WAVM, wasm3

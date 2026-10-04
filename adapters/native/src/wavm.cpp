@@ -19,6 +19,7 @@ static wasm_extern_t* find(Instance* i,const char* name){
 }
 static wasm_func_t* function(Instance* i,const char* name){auto f=wasm_extern_as_func(find(i,name));if(!f)throw std::runtime_error("export is not a function");return f;}
 static uint8_t type(wasm_valtype_t* v){switch(wasm_valtype_kind(v)){case WASM_I32:return 0x7f;case WASM_I64:return 0x7e;default:return 0;}}
+static wasm_trap_t* host_identity(const wasm_val_t args[],wasm_val_t results[]){results[0].i32=args[0].i32;return nullptr;}
 extern "C" {
 const char* wb_error(){return wb_last_error.c_str();}
 const char* wb_version(){return WB_VERSION;}
@@ -26,15 +27,26 @@ void* wb_engine_new(){WB_TRY{auto e=std::make_unique<Engine>();if(!e->value)thro
 void wb_engine_delete(void* e){delete static_cast<Engine*>(e);}
 void* wb_module_new(void* e,const uint8_t* data,size_t size){WB_TRY{
     auto m=wasm_module_new(static_cast<Engine*>(e)->value,reinterpret_cast<const char*>(data),size);
-    if(!m)throw std::runtime_error("module compilation failed");
-    if(wasm_module_num_imports(m)){wasm_module_delete(m);throw std::runtime_error("unsupported: import-free modules only");}return m;
+    if(!m)throw std::runtime_error("module compilation failed");return m;
 }WB_CATCH(nullptr)}
 void wb_module_delete(void* m){wasm_module_delete(static_cast<wasm_module_t*>(m));}
 void* wb_instance_new(void* e,void* m){WB_TRY{
     auto i=std::make_unique<Instance>();i->module=static_cast<wasm_module_t*>(m);
     i->compartment=wasm_compartment_new(static_cast<Engine*>(e)->value,"wasmbench");if(!i->compartment)throw std::runtime_error("compartment creation failed");
     i->store=wasm_store_new(i->compartment,"wasmbench");if(!i->store)throw std::runtime_error("store creation failed");
-    wasm_trap_t* trap=nullptr;i->value=wasm_instance_new(i->store,i->module,nullptr,&trap,"wasmbench");
+    const size_t count=wasm_module_num_imports(i->module);std::vector<wasm_extern_t*> imports;std::vector<wasm_func_t*> functions;
+    for(size_t k=0;k<count;k++){
+        wasm_import_t imported{};wasm_module_import(i->module,k,&imported);
+        const bool identity=imported.num_module_bytes==9&&!memcmp(imported.module,"wasmbench",9)&&imported.num_name_bytes==8&&!memcmp(imported.name,"identity",8);
+        // The typed cast is borrowed from imported.type. Delete that owner once
+        // below; deleting both the cast and its owner double-frees WAVM metadata.
+        const auto* functionType=wasm_externtype_as_functype_const(imported.type);
+        if(!identity||!functionType||wasm_functype_num_params(functionType)!=1||wasm_functype_num_results(functionType)!=1||wasm_valtype_kind(wasm_functype_param(functionType,0))!=WASM_I32||wasm_valtype_kind(wasm_functype_result(functionType,0))!=WASM_I32){wasm_externtype_delete(imported.type);throw std::runtime_error("unsupported: only wasmbench.identity(i32)->i32 is bound");}
+        auto host=wasm_func_new(i->compartment,functionType,host_identity,"wasmbench.identity");
+        wasm_externtype_delete(imported.type);if(!host)throw std::runtime_error("identity callback creation failed");functions.push_back(host);imports.push_back(wasm_func_as_extern(host));
+    }
+    wasm_trap_t* trap=nullptr;i->value=wasm_instance_new(i->store,i->module,imports.data(),&trap,"wasmbench");
+    for(auto* function:functions)wasm_func_delete(function);
     if(trap){wasm_trap_delete(trap);throw std::runtime_error("Wasm instantiation trap");}if(!i->value)throw std::runtime_error("instantiation failed");return i.release();
 }WB_CATCH(nullptr)}
 void wb_instance_delete(void* i){delete static_cast<Instance*>(i);}

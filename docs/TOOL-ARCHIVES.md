@@ -1,9 +1,11 @@
 # Preserving and restoring exact tools
 
-New CLI `plan`, `run` and `check` experiments default to `--archive-tools=true`.
+New CLI `plan`, `run` and `check` experiments default to `--archive-tools=false`.
 The policy is locked. Existing locks retain their original policy; neither true
-nor false may override it at execution. Use `--archive-tools=false` when creating
-a plan if disk cost is unacceptable. Library callers opt in with `Lock.ArchiveTools`.
+nor false may override it at execution. Use `--archive-tools=true` when creating
+a plan or run to retain exact tool bytes for later restoration. Without an archive,
+tools are still hash-pinned but must remain available separately for replay.
+Library callers opt in with `Lock.ArchiveTools`.
 
 Before workload admission or adapter execution, the runner copies its own exact
 executable, every declared adapter file, and the independent analyzer into the
@@ -12,7 +14,25 @@ regular, non-executable, read-only copies, not symlinks to mutable installations
 They are covered by the bundle seal. Offline loading also checks their hashes
 against the lock, so resealing a changed tool does not make it match the plan.
 This increases disk use, especially for shared-library runtimes and multiple
-configurations of the same runtime. Copies are not currently deduplicated.
+configurations of the same runtime. On macOS, tool/restoration and primary report
+copies use independent copy-on-write files where supported, with ordinary copies
+as the fallback. They are never hardlinks to mutable installations.
+
+## Compact existing local archives
+
+On a clone-capable filesystem, compact byte-identical large files beneath archived
+`tools/` directories without deleting trials, artifacts, checksums or replay paths:
+
+```sh
+node recipes/compact-tool-archives.mjs runs reports           # read-only estimate
+node recipes/compact-tool-archives.mjs --apply runs reports   # compact local copies
+```
+
+The script hashes candidates and verifies each replacement before an atomic rename.
+It uses independent copy-on-write clones, not hardlinks, and fails if cloning is not
+supported. Stop writers to these bundles first. Logical file counts and `du` may
+remain unchanged; check actual free space with `df`. Repeated compaction estimates
+can include already-shared bytes. No old run is automatically deleted.
 
 ## Restore without overwriting installations
 

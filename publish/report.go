@@ -131,7 +131,7 @@ func reportWithPasses(run, memoryRun, codeRun, out string, publication *publicat
 	if e = ExportCodeLifetimes(b, filepath.Join(out, "code-lifetimes.parquet")); e != nil {
 		return e
 	}
-	if e = os.CopyFS(filepath.Join(out, "raw"), os.DirFS(run)); e != nil {
+	if e = experiment.CopyTree(run, filepath.Join(out, "raw")); e != nil {
 		return e
 	}
 	if publication != nil {
@@ -150,7 +150,7 @@ func reportWithPasses(run, memoryRun, codeRun, out string, publication *publicat
 		if err := ExportObservations(memory, filepath.Join(out, "memory-observations.parquet")); err != nil {
 			return err
 		}
-		if e = os.CopyFS(filepath.Join(out, "raw-memory"), os.DirFS(memoryRun)); e != nil {
+		if e = experiment.CopyTree(memoryRun, filepath.Join(out, "raw-memory")); e != nil {
 			return e
 		}
 	}

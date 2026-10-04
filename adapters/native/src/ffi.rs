@@ -74,6 +74,29 @@ impl Engine {
     }
 }
 impl Instance {
+    pub fn signature(&self, name: &str) -> Result<(Vec<u8>, Vec<u8>)> {
+        let name = CString::new(name)?;
+        let mut params = [0u8; 32];
+        let mut results = [0u8; 32];
+        let mut np = 32usize;
+        let mut nr = 32usize;
+        unsafe {
+            ensure!(
+                wb_signature(
+                    self.0.as_ptr(),
+                    name.as_ptr(),
+                    params.as_mut_ptr(),
+                    &mut np,
+                    results.as_mut_ptr(),
+                    &mut nr
+                ) == 0,
+                "{}",
+                error()
+            );
+        }
+        ensure!(np <= 32 && nr <= 32, "invalid signature bounds");
+        Ok((params[..np].to_vec(), results[..nr].to_vec()))
+    }
     pub fn call(&mut self, name: &str, args: &[u64]) -> Result<Vec<u64>> {
         let name = CString::new(name)?;
         let mut params = [0u8; 32];

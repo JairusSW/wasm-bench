@@ -16,6 +16,9 @@ func TestExtraRuntimeCommands(t *testing.T) {
 	for id, key := range map[string]string{"spidermonkey": "WASMBENCH_SPIDERMONKEY", "jsc": "WASMBENCH_JSC", "v8-shell": "WASMBENCH_V8_SHELL", "deno": "WASMBENCH_DENO"} {
 		t.Run(id, func(t *testing.T) {
 			t.Setenv(key, shell)
+			if id == "jsc" {
+				t.Setenv("WASMBENCH_JSC_VERSION", "WebKitGTK/2.52.6")
+			}
 			args, ok, err := extraRuntimeCommand(root, id)
 			if err != nil || !ok {
 				t.Fatal(args, ok, err)
@@ -23,7 +26,16 @@ func TestExtraRuntimeCommands(t *testing.T) {
 			if args[0] != shell || !strings.Contains(strings.Join(args, " "), "runtime="+id) || !strings.Contains(strings.Join(args, " "), "binary-sha256=") {
 				t.Fatal(args)
 			}
-			if id == "deno" && !strings.Contains(strings.Join(args, " "), "--no-prompt --allow-read") {
+			if id == "deno" && (!strings.Contains(strings.Join(args, " "), "--v8-flags=--allow-natives-syntax,--no-liftoff,--no-wasm-tier-up,--no-wasm-lazy-compilation") || !strings.Contains(strings.Join(args, " "), "--no-prompt --allow-read")) {
+				t.Fatal(args)
+			}
+			if id == "spidermonkey" && !strings.Contains(strings.Join(args, " "), "--wasm-compiler=ion") {
+				t.Fatal(args)
+			}
+			if id == "jsc" && !strings.Contains(strings.Join(args, " "), "--thresholdForOMGOptimizeAfterWarmUp=1") {
+				t.Fatal(args)
+			}
+			if id == "jsc" && !strings.Contains(strings.Join(args, " "), "runtime-version=WebKitGTK/2.52.6") {
 				t.Fatal(args)
 			}
 		})
@@ -39,6 +51,34 @@ func TestExtraRuntimeCommands(t *testing.T) {
 	}
 }
 
+func TestResolveV8UsesPinnedNodeBinary(t *testing.T) {
+	root := t.TempDir()
+	node := filepath.Join(t.TempDir(), "node")
+	if err := os.WriteFile(node, []byte("release-pinned node"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	adapterDir := filepath.Join(root, "adapters", "v8")
+	if err := os.MkdirAll(adapterDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"adapter.mjs", "floats.mjs", "profiling.mjs", "compiler-mode.mjs", "harness.mjs"} {
+		if err := os.WriteFile(filepath.Join(adapterDir, name), []byte("// fixture\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("WASMBENCH_NODE", node)
+	runtimes, err := ResolveRuntimes(root, []string{"v8-optimizing-only"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runtimes) != 1 || runtimes[0].Command[0] != node {
+		t.Fatalf("V8 did not use the pinned Node executable: %#v", runtimes)
+	}
+	if !strings.Contains(strings.Join(runtimes[0].Command, " "), "--no-liftoff") {
+		t.Fatalf("V8 optimizing-only flags were lost: %#v", runtimes[0].Command)
+	}
+}
+
 func TestExtraShellProbe(t *testing.T) {
 	good := []byte("{\"version\":1,\"id\":1,\"status\":\"ok\",\"description\":{\"runtime\":\"v8\"}}\n{\"version\":1,\"id\":2,\"status\":\"ok\"}\n")
 	if err := validateExtraProbe(good); err != nil {
@@ -48,5 +88,58 @@ func TestExtraShellProbe(t *testing.T) {
 		if validateExtraProbe([]byte(bad)) == nil {
 			t.Fatal("accepted", bad)
 		}
+	}
+}
+
+func TestResolveJSCVersionArgument(t *testing.T) {
+	root := t.TempDir()
+	script := filepath.Join(root, "adapters", "js-shell", "adapter.js")
+	if err := os.MkdirAll(filepath.Dir(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(script, []byte("// test adapter\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	shell := filepath.Join(root, "adapter-jsc")
+	if err := os.WriteFile(shell, []byte("test engine"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WASMBENCH_JSC", shell)
+	t.Setenv("WASMBENCH_JSC_VERSION", "WebKitGTK/2.52.6")
+	runtimes, err := ResolveRuntimes(root, []string{"jsc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runtimes) != 1 || runtimes[0].ID != "jsc" || !strings.Contains(strings.Join(runtimes[0].Command, " "), "runtime-version=WebKitGTK/2.52.6") {
+		t.Fatalf("unexpected JSC runtime configuration: %#v", runtimes)
+	}
+}
+
+func TestResolveJSCHostUsesTheEmbeddingProtocolAndExactVersion(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "adapters", "js-shell"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "adapters", "js-shell", "adapter.js"), []byte("// test adapter\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	host := filepath.Join(root, "adapter-jsc")
+	if err := os.WriteFile(host, []byte("test engine"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WASMBENCH_JSC_HOST", host)
+	t.Setenv("WASMBENCH_JSC_VERSION", "WebKitGTK/2.52.6")
+	args, supported, err := extraRuntimeCommand(root, "jsc")
+	if err != nil || !supported {
+		t.Fatal(args, supported, err)
+	}
+	joined := strings.Join(args, " ")
+	for _, token := range []string{host, filepath.Join(root, "adapters", "js-shell", "adapter.js"), "runtime=jsc", "tier-mode=omg-eager", "runtime-version=WebKitGTK/2.52.6", "binary-sha256="} {
+		if !strings.Contains(joined, token) {
+			t.Fatalf("JSC embedding command lacks %q: %s", token, joined)
+		}
+	}
+	if strings.Contains(joined, "--thresholdForOMG") {
+		t.Fatalf("embedding host received standalone shell flags: %s", joined)
 	}
 }

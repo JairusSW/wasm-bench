@@ -14,6 +14,8 @@ use wasmi as embedding;
 mod ffi;
 #[cfg(not(feature = "wasmi"))]
 use ffi as embedding;
+#[cfg(any(feature = "wasmer_llvm", feature = "wasmer_singlepass"))]
+mod vectors;
 const RUNTIME: &str = env!("WB_RUNTIME");
 fn scenarios() -> Vec<&'static str> {
     if cfg!(feature = "wasm3") {
@@ -147,21 +149,54 @@ impl Adapter {
             "invalid protocol envelope"
         );
         match req["method"].as_str().unwrap_or("") {
-            "describe" => Ok(json!({"description":{
-                "runtime":RUNTIME,"runtime_version":embedding::version(),"backend":if cfg!(feature="wavm"){"llvm-jit"}else{"interpreter"},"embedding":"standalone Rust/C embedding","build":format!("adapter-native/{}; {}",env!("CARGO_PKG_VERSION"),RUNTIME),
-                "effective_configuration":{"compile_policy":if cfg!(feature="wasmedge"){"loader parse and validator; interpreter explicitly selected; no native compilation"}else if cfg!(feature="wasm3"){"parse, 1MiB stack runtime allocation, module load and eager bytecode compilation; module tied to runtime"}else{"eager module API; engine creation excluded"},"call_policy":"embedding export lookup, integer argument/result marshalling and result allocation included; every result verified outside timed batch","wasmi_dispatch":if cfg!(feature="wasmi"){"portable-dispatch; eager bytecode; no fuel"}else{"not applicable; external SDK build identity pinned"},"reset_policy":"fresh lifecycle instance; stateless steady retained instance; wasm3 recompiles outside first-call timing","release_policy":"native instance/store disposal; no physical RSS reclamation claim"},
-                "capabilities":{"can_compile_separately":true,"can_instantiate_separately":!cfg!(feature="wasm3")},"scenarios":scenarios(),"abis":["core"],"features":["mvp"],"phase_barrier_scenarios":scenarios(),"phase_release_policy":"release native instance; compiled module/engine retained except compile samples; no RSS reclamation claim"
-            }})),
+            "describe" => {
+                let mut description = json!({"description":{
+                    "runtime":RUNTIME,"runtime_version":embedding::version(),"backend":if cfg!(feature="wavm") || cfg!(feature="wasmer_llvm"){"llvm-jit"}else if cfg!(feature="wasmer_singlepass"){"singlepass-jit"}else{"interpreter"},"embedding":"standalone Rust/C embedding","build":format!("adapter-native/{}; {}",env!("CARGO_PKG_VERSION"),RUNTIME),
+                    "effective_configuration":{"compile_policy":if cfg!(feature="wasmer_llvm") || cfg!(feature="wasmer_singlepass"){"explicit Wasmer compiler; fresh compilation store and eager module compilation; engine creation excluded; instance creates a fresh store from the same engine"}else if cfg!(feature="wamr"){"C-API store allocation and module loading/validation; classic interpreter with GC and exception handling enabled, software stack bounds, 1MiB Wasm stack and no injected application heap; no native compilation"}else if cfg!(feature="wasmedge"){"loader parse and validator; interpreter explicitly selected; no native compilation"}else if cfg!(feature="wasm3"){"parse, 1MiB stack runtime allocation, module load and eager bytecode compilation; module tied to runtime"}else{"eager module API; engine creation excluded"},"call_policy":"embedding export lookup, integer argument/result marshalling and result allocation included; every result verified outside timed batch","wasmi_dispatch":if cfg!(feature="wasmi"){"portable-dispatch; eager bytecode; no fuel"}else{"not applicable; external SDK build identity pinned"},"reset_policy":"fresh lifecycle instance; stateless steady retained instance; wasm3 recompiles outside first-call timing","release_policy":"native instance/store disposal; no physical RSS reclamation claim"},
+                    "capabilities":{"can_compile_separately":true,"can_instantiate_separately":!cfg!(feature="wasm3"),"can_host_function_calls_v1":cfg!(feature="wasmi") || cfg!(feature="wasmer_llvm") || cfg!(feature="wasmer_singlepass") || cfg!(feature="wasm3") || cfg!(feature="wamr") || cfg!(feature="wavm")},"scenarios":scenarios(),"abis":["core"],"features":["mvp"],"phase_barrier_scenarios":scenarios(),"phase_release_policy":"release native instance; compiled module/engine retained except compile samples; no RSS reclamation claim"
+                }});
+                if cfg!(feature = "wasmer_llvm") || cfg!(feature = "wasmer_singlepass") {
+                    description["description"]["validator_features"] = json!({"namespace":"wasmparser/0.251.0","evidence":"Pinned Wasmer 7.3.0 compiler configuration and explicit C API feature subset; Singlepass SIMD disabled after corpus instruction lowering failures; enabled validation is not a guarantee of complete backend support","supported":{"GC":false,"FUNCTION_REFERENCES":false,"MEMORY64":false,"STACK_SWITCHING":false,"SIMD":cfg!(feature="wasmer_llvm"),"RELAXED_SIMD":cfg!(feature="wasmer_llvm"),"EXCEPTIONS":cfg!(feature="wasmer_llvm"),"LEGACY_EXCEPTIONS":cfg!(feature="wasmer_llvm"),"TAIL_CALL":cfg!(feature="wasmer_llvm")}});
+                }
+                if cfg!(feature = "wasmer_llvm") || cfg!(feature = "wasmer_singlepass") {
+                    description["description"]["capabilities"]["can_code_profile"] = json!(false);
+                    description["description"]["capabilities"]["can_run_vectors"] = json!(true);
+                    for name in ["compile", "instantiate", "first-call"] {
+                        description["description"]["capabilities"]
+                            [format!("can_vector_{name}_phases")] = json!(true);
+                    }
+                    description["description"]["effective_configuration"]["vector_policy"] = json!(
+                        "Fresh instance per ordered vector sequence; input writes and exact output verification excluded from sum of timed export lookups, integer marshalling and embedding calls; one operation per complete sequence; lifecycle windows match scalar API phases"
+                    );
+                    description["description"]["effective_configuration"]["assemblyscript_abort_policy"] = json!(
+                        "Only env.abort with four i32 parameters and no results; imported callback creates a real guest trap; no other host imports"
+                    );
+                }
+                Ok(description)
+            }
             "prepare" => {
                 self.prep = None;
                 self.bytes.clear();
                 let p = &req["prepare"];
                 let w = &p["workload"];
+                let vector_contract = (cfg!(feature = "wasmer_llvm")
+                    || cfg!(feature = "wasmer_singlepass"))
+                    && w["oracle"]["kind"] == "exact_vectors";
+                let assemblyscript = (cfg!(feature = "wasmer_llvm")
+                    || cfg!(feature = "wasmer_singlepass"))
+                    && w["host_profile"] == "assemblyscript-abort-v1";
+                let identity_host = (cfg!(feature = "wasmi")
+                    || cfg!(feature = "wasmer_llvm")
+                    || cfg!(feature = "wasmer_singlepass")
+                    || cfg!(feature = "wasm3")
+                    || cfg!(feature = "wamr")
+                    || cfg!(feature = "wavm"))
+                    && w["host_profile"] == "identity-v1";
                 ensure!(
                     ["timing", "memory"].contains(&field(p, "profile")?)
                         && w["abi"] == "core"
                         && ["stateless", "fresh_instance_per_sample"].contains(&field(w, "reset")?)
-                        && w["oracle"]["kind"] == "exact_u64"
+                        && (w["oracle"]["kind"] == "exact_u64" || vector_contract)
                         && !field(w, "export")?.is_empty(),
                     "unsupported: core integer scalar timing/memory only"
                 );
@@ -176,6 +211,11 @@ impl Adapter {
                     "guest_density",
                     "snapshot_density",
                 ] {
+                    if key == "host_profile" && (assemblyscript || identity_host)
+                        || key == "vectors" && vector_contract
+                    {
+                        continue;
+                    }
                     ensure!(
                         w[key].is_null() || w[key] == "",
                         "unsupported: extended workload contract {key}"
@@ -189,6 +229,10 @@ impl Adapter {
                 );
                 values(&w["args"])?;
                 values(&w["oracle"]["expected"])?;
+                #[cfg(any(feature = "wasmer_llvm", feature = "wasmer_singlepass"))]
+                if vector_contract {
+                    vectors::validate(w)?;
+                }
                 let bytes = fs::read(field(p, "artifact")?)?;
                 ensure!(
                     hex::encode(Sha256::digest(&bytes)) == field(p, "artifact_sha256")?,
@@ -201,8 +245,8 @@ impl Adapter {
                             "unsupported: core binary required"
                         ),
                         wasmparser::Payload::ImportSection(imports) => ensure!(
-                            imports.count() == 0,
-                            "unsupported: import-free modules only"
+                            imports.count() == 0 || assemblyscript || identity_host,
+                            "unsupported: imports require an explicitly supported host profile"
                         ),
                         _ => {}
                     }
@@ -212,6 +256,14 @@ impl Adapter {
                 Ok(json!({}))
             }
             "run" => {
+                #[cfg(any(feature = "wasmer_llvm", feature = "wasmer_singlepass"))]
+                if self
+                    .prep
+                    .as_ref()
+                    .is_some_and(|p| p["workload"]["oracle"]["kind"] == "exact_vectors")
+                {
+                    return self.run_vectors(req, input);
+                }
                 let p = self
                     .prep
                     .as_ref()
@@ -237,14 +289,26 @@ impl Adapter {
                 };
                 let samples = bounded("samples", 1, 100000)?;
                 let operations = bounded("operations", 1, 1000000)?;
-                let warmup = bounded("warmup", 0, 100000)?;
+                let requested_warmup = bounded("warmup", 0, 100000)?;
+                // The harness protocol applies warmups only to steady samples.
+                // Fresh lifecycle samples must remain cold even when collection
+                // options also request warmups for steady measurements.
+                let warmup = if scenario != "steady"
+                    && (cfg!(feature = "wasmer_llvm") || cfg!(feature = "wasmer_singlepass"))
+                {
+                    0
+                } else {
+                    requested_warmup
+                };
                 ensure!(
                     scenario == "steady" || (operations == 1 && warmup == 0),
                     "unsupported: lifecycle requires one operation and zero warmup"
                 );
                 ensure!(
-                    scenario != "steady" || w["reset"] == "stateless",
-                    "unsupported: steady requires stateless reset"
+                    scenario != "steady"
+                        || w["reset"] == "stateless"
+                        || (operations == 1 && !cfg!(feature = "wasm3")),
+                    "unsupported: steady requires stateless reset, or one operation under fresh-instance policy"
                 );
                 let engine = embedding::Engine::new()?;
                 let shared = if scenario == "compile" || cfg!(feature = "wasm3") {
@@ -256,7 +320,7 @@ impl Adapter {
                 if scenario == "steady" && shared.is_none() {
                     steady_module = Some(engine.compile(&self.bytes)?);
                 }
-                let mut steady = if scenario == "steady" {
+                let mut steady = if scenario == "steady" && w["reset"] == "stateless" {
                     let mut target =
                         engine.instantiate(shared.as_ref().or(steady_module.as_ref()).unwrap())?;
                     initialize(&mut target, w)?;
@@ -291,7 +355,9 @@ impl Adapter {
                     } else {
                         None
                     };
-                    let mut instance = if scenario == "first-call" {
+                    let mut instance = if scenario == "first-call"
+                        || (scenario == "steady" && w["reset"] == "fresh_instance_per_sample")
+                    {
                         let mut target =
                             engine.instantiate(shared.as_ref().or(local.as_ref()).unwrap())?;
                         initialize(&mut target, w)?;

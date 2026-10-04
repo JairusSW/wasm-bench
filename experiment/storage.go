@@ -58,6 +58,9 @@ func CopyExclusive(src, dst string) error {
 	if e = os.MkdirAll(filepath.Dir(dst), 0755); e != nil {
 		return e
 	}
+	if copied, err := cloneExclusive(src, dst); copied || err != nil {
+		return err
+	}
 	f, e := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 	if e != nil {
 		return e
@@ -68,6 +71,35 @@ func CopyExclusive(src, dst string) error {
 		return e
 	}
 	return ce
+}
+
+// CopyTree preserves an independent bundle, using copy-on-write where available.
+// Symlinks are rejected; destinations are new-only, like os.CopyFS.
+func CopyTree(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0755)
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("cannot copy non-regular bundle file: %s", path)
+		}
+		if err := CopyExclusive(path, target); err != nil {
+			return err
+		}
+		return os.Chmod(target, info.Mode().Perm()|0200)
+	})
 }
 func Seal(root string) error {
 	hashes := map[string]string{}
@@ -87,6 +119,10 @@ func Seal(root string) error {
 		}
 		if d.Type()&os.ModeSymlink != 0 {
 			return fmt.Errorf("symlink in bundle")
+		}
+		// Finder metadata at the bundle root is not benchmark evidence.
+		if filepath.Base(rel) == ".DS_Store" {
+			return nil
 		}
 		hash, e := DigestFile(path)
 		hashes[filepath.ToSlash(rel)] = hash
@@ -108,6 +144,11 @@ func Verify(root string) error {
 	for rel, want := range hashes {
 		if !filepath.IsLocal(rel) {
 			return fmt.Errorf("unsafe bundle path %q", rel)
+		}
+		// Legacy seals may include mutable Finder metadata. Preserve the seal
+		// while checking every evidence file against its original digest.
+		if filepath.Base(rel) == ".DS_Store" {
+			continue
 		}
 		path := filepath.Join(root, rel)
 		info, e := os.Lstat(path)
@@ -133,6 +174,12 @@ func Verify(root string) error {
 			return nil
 		}
 		rel, _ := filepath.Rel(root, path)
+		if filepath.Base(rel) == ".DS_Store" {
+			if d.Type()&os.ModeSymlink != 0 {
+				return fmt.Errorf("symlink in bundle")
+			}
+			return nil
+		}
 		if rel != "checksums.json" {
 			if _, ok := hashes[filepath.ToSlash(rel)]; !ok {
 				return fmt.Errorf("unsealed file: %s", rel)

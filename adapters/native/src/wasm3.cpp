@@ -15,6 +15,7 @@ struct Module {
 static void check(M3Result r){if(r)throw std::runtime_error(r);}
 static IM3Function function(Module* m,const char* name){IM3Function f=nullptr;check(m3_FindFunction(&f,m->runtime,name));return f;}
 static uint8_t type(M3ValueType v){return v==c_m3Type_i32?0x7f:v==c_m3Type_i64?0x7e:0;}
+m3ApiRawFunction(host_identity){m3ApiReturnType(int32_t);m3ApiGetArg(int32_t,value);m3ApiReturn(value);}
 extern "C" {
 const char* wb_error(){return wb_last_error.c_str();}
 const char* wb_version(){return WB_VERSION;}
@@ -24,7 +25,13 @@ void* wb_module_new(void* e,const uint8_t* bytes,size_t n){WB_TRY{
     if(n>UINT32_MAX)throw std::runtime_error("module too large");auto m=std::make_unique<Module>();m->bytes.assign(bytes,bytes+n);
     m->runtime=m3_NewRuntime(static_cast<Engine*>(e)->value,1<<20,nullptr);if(!m->runtime)throw std::runtime_error("runtime creation failed");
     check(m3_ParseModule(static_cast<Engine*>(e)->value,&m->module,m->bytes.data(),static_cast<uint32_t>(n)));
-    check(m3_LoadModule(m->runtime,m->module));m->loaded=true;check(m3_CompileModule(m->module));return m.release();
+    check(m3_LoadModule(m->runtime,m->module));m->loaded=true;
+    // The link API reports a lookup failure for modules that do not import
+    // wasmbench.identity. Leave those modules alone; compilation still rejects
+    // every unresolved import, while host-call fixtures bind normally.
+    M3Result link=m3_LinkRawFunction(m->module,"wasmbench","identity","i(i)",host_identity);
+    if(link&&strcmp(link,"function lookup failed")!=0)check(link);
+    check(m3_CompileModule(m->module));return m.release();
 }WB_CATCH(nullptr)}
 void wb_module_delete(void* m){delete static_cast<Module*>(m);}
 void* wb_instance_new(void*,void* m){WB_TRY{check(m3_RunStart(static_cast<Module*>(m)->module));return m;}WB_CATCH(nullptr)}

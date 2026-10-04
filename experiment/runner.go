@@ -15,6 +15,8 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -29,6 +31,8 @@ func ResolveRuntimes(root string, ids []string) ([]Runtime, error) {
 				backend = "winch"
 			}
 			r.Command = []string{filepath.Join(root, "adapters", "wasmtime", "target", "process-snapshot", "release", "qualify-process-snapshot"), "--adapter=" + backend}
+		case "wasmtime-component-async":
+			r.Command = []string{filepath.Join(root, "adapters", "wasmtime", "target", "component-async", "release", "adapter-wasmtime"), "--component-async"}
 		case "wasmtime", "wasmtime-winch", "wasmtime-pooling", "wasmtime-allocator", "wasmtime-winch-allocator", "wasmtime-code-lifetime", "wasmtime-winch-code-lifetime":
 			r.Command = []string{filepath.Join(root, "adapters", "wasmtime", "target", "release", "adapter-wasmtime")}
 			if strings.HasSuffix(id, "-allocator") {
@@ -49,12 +53,19 @@ func ResolveRuntimes(root string, ids []string) ([]Runtime, error) {
 			r.Command = []string{filepath.Join(root, "bin", "adapter-wazero")}
 		case "wazero-interpreter":
 			r.Command = []string{filepath.Join(root, "bin", "adapter-wazero"), "--interpreter"}
-		case "v8", "v8-liftoff-only", "v8-optimizing-only":
-			node, e := exec.LookPath("node")
+		case "v8", "v8-wasmfx", "v8-liftoff-only", "v8-optimizing-only":
+			node := os.Getenv("WASMBENCH_NODE")
+			if node == "" {
+				node = "node"
+			}
+			node, e := exec.LookPath(node)
 			if e != nil {
 				return nil, e
 			}
 			r.Command = []string{node}
+			if id == "v8-wasmfx" {
+				r.Command = append(r.Command, "--experimental-wasm-wasmfx")
+			}
 			mode := ""
 			if id == "v8-liftoff-only" {
 				mode = "liftoff-only"
@@ -69,7 +80,11 @@ func ResolveRuntimes(root string, ids []string) ([]Runtime, error) {
 				r.Command = append(r.Command, "--compiler-mode="+mode)
 			}
 		case "v8-tier-observed", "v8-tier-traced":
-			node, err := exec.LookPath("node")
+			node := os.Getenv("WASMBENCH_NODE")
+			if node == "" {
+				node = "node"
+			}
+			node, err := exec.LookPath(node)
 			if err != nil {
 				return nil, err
 			}
@@ -91,7 +106,7 @@ func ResolveRuntimes(root string, ids []string) ([]Runtime, error) {
 			r.Command[0] = NativeExecutable(r.Command[0])
 		}
 		for _, path := range r.Command {
-			if strings.HasPrefix(path, "--") || strings.HasPrefix(path, "runtime=") || strings.HasPrefix(path, "binary-sha256=") || path == "-f" || path == "run" {
+			if strings.HasPrefix(path, "--") || strings.HasPrefix(path, "runtime=") || strings.HasPrefix(path, "runtime-version=") || strings.HasPrefix(path, "binary-sha256=") || strings.HasPrefix(path, "tier-mode=") || path == "-f" || path == "-jar" || path == "run" {
 				continue
 			}
 			hash, e := DigestFile(path)
@@ -125,6 +140,9 @@ func ResolveRuntimes(root string, ids []string) ([]Runtime, error) {
 	return out, nil
 }
 func NewLock(options Options, runtimes []Runtime, workloads []protocol.Workload) (Lock, error) {
+	if options.Workers == 0 {
+		options.Workers = 1
+	}
 	exe, e := os.Executable()
 	if e != nil {
 		return Lock{}, e
@@ -168,6 +186,9 @@ func ValidateLock(l Lock) error {
 		return fmt.Errorf("unsupported schema or protocol")
 	}
 	o := l.Options
+	if o.Workers < 0 || o.Workers > 3 {
+		return fmt.Errorf("workers must be within 1..3")
+	}
 	if o.SustainedPostCollection && (o.Profile != "memory" || !slices.Contains(o.Scenarios, "sustained")) {
 		return fmt.Errorf("sustained post-collection requires sustained scenario in a dedicated memory pass")
 	}
@@ -193,6 +214,11 @@ func ValidateLock(l Lock) error {
 	}
 	if o.Launches < 1 || o.Samples < 1 || o.Operations < 1 || o.Warmup < 0 || o.Timeout <= 0 {
 		return fmt.Errorf("positive launches, samples, operations and timeout required")
+	}
+	for scenario, samples := range o.ScenarioSamples {
+		if (scenario != "*" && !slices.Contains(o.Scenarios, scenario)) || samples < 1 || samples > 100000 {
+			return fmt.Errorf("scenario sample override %q=%d must name a selected scenario and be within 1..100000", scenario, samples)
+		}
 	}
 	if o.Samples > 100000 || o.Operations > 1000000 || o.Launches > 10000 {
 		return fmt.Errorf("batch exceeds protocol safety bounds")
@@ -453,85 +479,109 @@ func Run(ctx context.Context, lock Lock, artifactBase, out string, progress func
 		manifest.Publication = "prohibited"
 	}
 	// Preflight is sacrificial and never supplies measurement samples.
-	preflight := map[string]Trial{}
-	partitionSampleFailed := false
-	for wi, w := range lock.Workloads {
-		for ri, r := range lock.Runtimes {
-			key := fmt.Sprintf("%d/%d", wi, ri)
-			checkScenario := "first-call"
-			if w.SnapshotDensity != nil {
-				checkScenario = protocol.SnapshotDensityScenario
-			}
-			if w.ProcessSnapshot != nil {
-				checkScenario = "process-snapshot-restore"
-			}
-			if w.Continuation != nil {
-				checkScenario = "continuation-resume"
-			}
-			if w.Checkpoint != nil {
-				checkScenario = "checkpoint-restore"
-			}
-			if w.GuestDensity != nil {
-				checkScenario = "guest-density"
-			}
-			if w.ABI == "component" && w.Oracle.Kind == "component_compile_only" {
-				checkScenario = "compile"
-			}
-			if w.Density != nil && len(lock.Options.Scenarios) == 1 && lock.Options.Scenarios[0] == "density-cycle" {
-				checkScenario = "density-cycle"
-			}
-			t := runTrial(ctx, out, lock.Options, r, w, checkScenario, -1, fmt.Sprintf("check-%d-%d", wi, ri))
-			partitionSampleFailed = partitionSampleFailed || (t.PartitionMonitor != nil && t.PartitionMonitor.Status != "ready_at_samples")
-			preflight[key] = t
-			if e := WriteJSON(filepath.Join(out, "trials", t.ID+".json"), t); e != nil {
-				return out, e
-			}
-			if t.Status != "ok" {
-				progress(fmt.Sprintf("check %s / %s: %s (%s)", r.ID, w.ID, t.Status, t.Reason))
-			}
+	preflight := make([]Trial, len(lock.Workloads)*len(lock.Runtimes))
+	var partitionSampleFailed atomic.Bool
+	var progressMu sync.Mutex
+	preflightOutcomes := make(map[string]int)
+	preflightErr := parallel(ctx, lock.Options.Workers, len(preflight), func(index int) error {
+		wi, ri := index/len(lock.Runtimes), index%len(lock.Runtimes)
+		w, r := lock.Workloads[wi], lock.Runtimes[ri]
+		checkScenario := "first-call"
+		if w.SnapshotDensity != nil {
+			checkScenario = protocol.SnapshotDensityScenario
 		}
+		if w.ProcessSnapshot != nil {
+			checkScenario = "process-snapshot-restore"
+		}
+		if w.Continuation != nil {
+			checkScenario = "continuation-resume"
+		}
+		if w.Checkpoint != nil {
+			checkScenario = "checkpoint-restore"
+		}
+		if w.GuestDensity != nil {
+			checkScenario = "guest-density"
+		}
+		if w.ABI == "component" && w.Oracle.Kind == "component_compile_only" {
+			checkScenario = "compile"
+		}
+		if w.Density != nil && len(lock.Options.Scenarios) == 1 && lock.Options.Scenarios[0] == "density-cycle" {
+			checkScenario = "density-cycle"
+		}
+		t := runTrial(ctx, out, lock.Options, r, w, checkScenario, -1, fmt.Sprintf("check-%d-%d", wi, ri))
+		if t.PartitionMonitor != nil && t.PartitionMonitor.Status != "ready_at_samples" {
+			partitionSampleFailed.Store(true)
+		}
+		preflight[index] = t
+		progressMu.Lock()
+		preflightOutcomes[t.Status]++
+		progressMu.Unlock()
+		if e := WriteJSON(filepath.Join(out, "trials", t.ID+".json"), t); e != nil {
+			return e
+		}
+		return nil
+	})
+	if progress != nil && len(preflightOutcomes) > 0 {
+		progress(fmt.Sprintf("Preflight outcomes: %s", formatOutcomeCounts(preflightOutcomes)))
+	}
+	if preflightErr != nil {
+		return out, preflightErr
 	}
 	if !lock.Options.Check {
 		rng := rand.New(rand.NewSource(lock.Options.Seed))
 		counter := 0
+		type measurement struct {
+			id, scenario      string
+			workload, runtime int
+			block             int
+		}
+		measurementsByScenario := make(map[string][]measurement, len(lock.Options.Scenarios))
 		for block := 0; block < lock.Options.Launches; block++ {
-			for wi, w := range lock.Workloads {
+			for wi := range lock.Workloads {
 				for _, scenario := range lock.Options.Scenarios {
 					for _, ri := range rng.Perm(len(lock.Runtimes)) {
-						if ctx.Err() != nil {
-							return out, ctx.Err()
-						}
-						r := lock.Runtimes[ri]
 						id := fmt.Sprintf("trial-%06d", counter)
 						counter++
 						manifest.Order = append(manifest.Order, id)
-						var t Trial
-						check := preflight[fmt.Sprintf("%d/%d", wi, ri)]
-						if check.Status != "ok" {
-							status := "preflight_failed"
-							if check.Status == "unsupported" || check.Status == "unavailable" {
-								status = check.Status
-							}
-							t = Trial{ID: id, Runtime: r.ID, Workload: w.ID, Scenario: scenario, Profile: lock.Options.Profile, Block: block, Status: status, Reason: "sacrificial check " + check.ID + ": " + check.Reason}
-						} else {
-							t = runTrial(ctx, out, lock.Options, r, w, scenario, block, id)
-						}
-						partitionSampleFailed = partitionSampleFailed || (t.PartitionMonitor != nil && t.PartitionMonitor.Status != "ready_at_samples")
-						if e := WriteJSON(filepath.Join(out, "trials", id+".json"), t); e != nil {
-							return out, e
-						}
-						counterStatus := ""
-						if len(t.CounterPhases) > 0 {
-							counts := map[string]int{}
-							for _, p := range t.CounterPhases {
-								counts[p.Status]++
-							}
-							counterStatus = fmt.Sprintf(" (counter windows: %v)", counts)
-						}
-						progress(fmt.Sprintf("[%d] %s / %s / %s: %s%s", block+1, r.ID, w.ID, scenario, t.Status, counterStatus))
+						measurementsByScenario[scenario] = append(measurementsByScenario[scenario], measurement{id: id, scenario: scenario, workload: wi, runtime: ri, block: block})
 					}
 				}
 			}
+		}
+		phases := make([][]measurement, 0, len(lock.Options.Scenarios))
+		for _, scenario := range lock.Options.Scenarios {
+			phases = append(phases, measurementsByScenario[scenario])
+		}
+		measurementOutcomes := make(map[string]int)
+		measurementErr := parallelPhases(ctx, lock.Options.Workers, phases, func(job measurement) error {
+			r, w := lock.Runtimes[job.runtime], lock.Workloads[job.workload]
+			var t Trial
+			check := preflight[job.workload*len(lock.Runtimes)+job.runtime]
+			if check.Status != "ok" {
+				status := "preflight_failed"
+				if check.Status == "unsupported" || check.Status == "unavailable" {
+					status = check.Status
+				}
+				t = Trial{ID: job.id, Runtime: r.ID, Workload: w.ID, Scenario: job.scenario, Profile: lock.Options.Profile, Block: job.block, Status: status, Reason: "sacrificial check " + check.ID + ": " + check.Reason}
+			} else {
+				t = runTrial(ctx, out, lock.Options, r, w, job.scenario, job.block, job.id)
+			}
+			if t.PartitionMonitor != nil && t.PartitionMonitor.Status != "ready_at_samples" {
+				partitionSampleFailed.Store(true)
+			}
+			if e := WriteJSON(filepath.Join(out, "trials", job.id+".json"), t); e != nil {
+				return e
+			}
+			progressMu.Lock()
+			measurementOutcomes[t.Status]++
+			progressMu.Unlock()
+			return nil
+		})
+		if measurementErr != nil {
+			return out, measurementErr
+		}
+		if progress != nil {
+			progress(fmt.Sprintf("Measurement outcomes: %s", formatOutcomeCounts(measurementOutcomes)))
 		}
 	}
 	if lock.RequireIRQAffinity {
@@ -546,7 +596,7 @@ func Run(ctx context.Context, lock Lock, artifactBase, out string, progress func
 		manifest.CPUPartitionEnd = &p
 		if p.Err() != nil {
 			manifest.Publication = "prohibited_cpu_partition_mismatch"
-		} else if partitionSampleFailed {
+		} else if partitionSampleFailed.Load() {
 			manifest.Publication = "prohibited_cpu_partition_sample_mismatch"
 		}
 	}
@@ -575,7 +625,7 @@ func Run(ctx context.Context, lock Lock, artifactBase, out string, progress func
 			return out, fmt.Errorf("%w; diagnostic bundle sealed at %s", err, out)
 		}
 	}
-	if partitionSampleFailed {
+	if partitionSampleFailed.Load() {
 		return out, fmt.Errorf("active CPU partition sample failed; diagnostic bundle sealed at %s", out)
 	}
 	if manifest.IRQAffinityEnd != nil {
@@ -584,6 +634,21 @@ func Run(ctx context.Context, lock Lock, artifactBase, out string, progress func
 		}
 	}
 	return out, nil
+}
+
+func formatOutcomeCounts(counts map[string]int) string {
+	statuses := make([]string, 0, len(counts))
+	for status := range counts {
+		statuses = append(statuses, status)
+	}
+	slices.Sort(statuses)
+	parts := make([]string, 0, len(statuses))
+	total := 0
+	for _, status := range statuses {
+		parts = append(parts, fmt.Sprintf("%s=%d", status, counts[status]))
+		total += counts[status]
+	}
+	return fmt.Sprintf("%d total (%s)", total, strings.Join(parts, ", "))
 }
 
 func runTrial(ctx context.Context, root string, o Options, r Runtime, w protocol.Workload, scenario string, block int, id string) (t Trial) {
@@ -625,6 +690,10 @@ func runTrial(ctx context.Context, root string, o Options, r Runtime, w protocol
 	}
 	if block >= 0 && r.Description.Capabilities["can_profile_tier_trajectory"] && o.Profile != "profiling" {
 		t.Status, t.Reason = "unsupported", "tier-observation adapter requires a dedicated profiling pass"
+		return
+	}
+	if supported, declared := r.Description.Capabilities["can_code_profile"]; o.Profile == "code" && declared && !supported {
+		t.Status, t.Reason = "unsupported", "adapter explicitly declares native-code image collection unavailable"
 		return
 	}
 	if w.Oracle.Float != nil && w.Oracle.Kind != "float_bits_v1" {
@@ -739,6 +808,12 @@ func runTrial(ctx context.Context, root string, o Options, r Runtime, w protocol
 		}
 		if err := validate(&protocol.Preparation{Workload: w, Profile: o.Profile}, &request); err != nil {
 			t.Status, t.Reason = "unsupported", err.Error()
+			return
+		}
+	}
+	if w.HostProfile == "js-string-builtins-v1" || w.HostProfile == "threads-defined-v1" {
+		if !r.Description.Capabilities["can_host_profile_"+w.HostProfile] {
+			t.Status, t.Reason = "unsupported", "adapter does not advertise host profile: "+w.HostProfile
 			return
 		}
 	}
@@ -990,12 +1065,14 @@ func runTrial(ctx context.Context, root string, o Options, r Runtime, w protocol
 		}
 	}()
 	prepareProfile := o.Profile
-	if block < 0 && (o.Profile == "counters" || o.Profile == "profiling" || (w.ProcessSnapshot != nil && o.Profile == "memory")) {
+	if block < 0 && (o.Profile == "counters" || o.Profile == "profiling" || o.Profile == "code" || (w.ProcessSnapshot != nil && o.Profile == "memory")) {
 		prepareProfile = "timing"
 	}
-	_, e = c.Call(protocol.Request{Method: "prepare", Prepare: &protocol.Preparation{Artifact: filepath.Join(root, w.Artifact), ArtifactSHA256: w.SHA256, Workload: resolveCommandFiles(w, root), Profile: prepareProfile}})
+	resp, e := c.Call(protocol.Request{Method: "prepare", Prepare: &protocol.Preparation{Artifact: filepath.Join(root, w.Artifact), ArtifactSHA256: w.SHA256, Workload: resolveCommandFiles(w, root), Profile: prepareProfile}})
 	if e != nil {
-		t.Reason = e.Error()
+		if !setAdapterFailure(&t, resp, e) {
+			t.Reason = e.Error()
+		}
 		return
 	}
 	if w.SnapshotDensity != nil && o.Profile == "memory" {
@@ -1026,7 +1103,9 @@ func runTrial(ctx context.Context, root string, o Options, r Runtime, w protocol
 		}
 		resp, e := c.Call(message)
 		if e != nil {
-			t.Reason = e.Error()
+			if !setAdapterFailure(&t, resp, e) {
+				t.Reason = e.Error()
+			}
 			return
 		}
 		t.Observations = resp.Diagnostics
@@ -1105,7 +1184,6 @@ func runTrial(ctx context.Context, root string, o Options, r Runtime, w protocol
 		}}
 		handler = phases.handle
 	}
-	var resp protocol.Response
 	if o.Profile == "counters" && block >= 0 {
 		resp, t.CounterPhases, e = c.CallCounterPhases(protocol.Request{Method: "run", Run: &request})
 	} else {
@@ -1153,6 +1231,9 @@ func runTrial(ctx context.Context, root string, o Options, r Runtime, w protocol
 		t.Observations = append(t.Observations, collectors.Snapshot(c.PID(), scenario+"/after_batch")...)
 	}
 	if e != nil {
+		if setAdapterFailure(&t, resp, e) {
+			return
+		}
 		t.Reason = e.Error()
 		t.AdapterSamples = resp.Samples
 		if strings.Contains(t.Reason, "incorrect result") {
@@ -1286,8 +1367,28 @@ func runTrial(ctx context.Context, root string, o Options, r Runtime, w protocol
 	return
 }
 
+func setAdapterFailure(t *Trial, resp protocol.Response, err error) bool {
+	if err == nil || len(resp.Samples) != 0 || (resp.Status != "unsupported" && resp.Status != "unavailable") {
+		return false
+	}
+	t.Status = resp.Status
+	t.Reason = resp.Reason
+	return true
+}
+
 func trialRequest(o Options, w protocol.Workload, scenario string, block int) protocol.RunRequest {
-	r := protocol.RunRequest{Scenario: scenario, Samples: o.Samples, Operations: o.Operations, Warmup: o.Warmup, PhaseBarriers: o.PhaseBarriers && block >= 0}
+	warmup := 0
+	if scenario == "steady" || scenario == "trajectory" || scenario == "sustained" {
+		warmup = o.Warmup
+	}
+	r := protocol.RunRequest{Scenario: scenario, Samples: o.Samples, Operations: o.Operations, Warmup: warmup, PhaseBarriers: o.PhaseBarriers && block >= 0}
+	if block >= 0 && o.Profile == "timing" {
+		if samples, ok := o.ScenarioSamples[scenario]; ok {
+			r.Samples = samples
+		} else if samples, ok := o.ScenarioSamples["*"]; ok {
+			r.Samples = samples
+		}
+	}
 	if scenario == "sustained" && block >= 0 {
 		r.SustainedDurationNS = int64(o.SustainedDuration)
 		r.SustainedPostCollection = o.SustainedPostCollection
@@ -1299,6 +1400,9 @@ func trialRequest(o Options, w protocol.Workload, scenario string, block int) pr
 		if block < 0 && (w.Oracle.Kind == "exact_vectors" || w.Oracle.Kind == "exact_command" || w.Oracle.Kind == "expected_trap") {
 			r.Samples = 2
 		}
+	}
+	if block < 0 && w.ABI == "component" && w.Oracle.Kind == "component_compile_only" {
+		r = protocol.RunRequest{Scenario: "compile", Samples: 1, Operations: 1}
 	}
 	if w.Density != nil {
 		r.Scenario, r.Operations, r.Warmup = "density", 1, 0

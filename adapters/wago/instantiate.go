@@ -18,7 +18,7 @@ func (a *adapter) instantiatePhases(r *protocol.RunRequest) ([]protocol.Sample, 
 	}
 	if a.compiled == nil {
 		var err error
-		a.compiled, err = wago.Compile(nil, a.wasm)
+		a.compiled, err = wago.Compile(a.compileConfig, a.wasm)
 		if err != nil {
 			return nil, err
 		}

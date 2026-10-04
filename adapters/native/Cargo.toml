@@ -7,8 +7,11 @@ edition = "2024"
 default = ["wasmi"]
 wasmi = ["dep:wasmi"]
 wavm = []
+wamr = []
 wasm3 = []
 wasmedge = []
+wasmer_llvm = []
+wasmer_singlepass = []
 
 [dependencies]
 anyhow = "1"

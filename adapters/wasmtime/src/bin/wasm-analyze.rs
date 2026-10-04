@@ -11,7 +11,7 @@ mod component_analysis;
 fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let path = args.next().ok_or_else(|| {
-        anyhow::anyhow!("usage: wasm-analyze FILE.wasm [default|wasm1|wasm2|wasm3]")
+        anyhow::anyhow!("usage: wasm-analyze FILE.wasm [default|wasm1|wasm2|wasm3|all]")
     })?;
     let profile = args.next().unwrap_or_else(|| "default".into());
     if args.next().is_some() {
@@ -28,6 +28,7 @@ fn main() -> Result<()> {
 fn feature_policy(profile: &str) -> Result<WasmFeatures> {
     Ok(match profile {
         "default" => WasmFeatures::default(),
+        "all" => WasmFeatures::all(),
         "wasm1" => WasmFeatures::WASM1,
         "wasm2" => WasmFeatures::WASM2,
         "wasm3" => WasmFeatures::WASM3,

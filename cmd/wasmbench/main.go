@@ -493,7 +493,7 @@ func run(ctx context.Context, args []string) error {
 	case "analyze":
 		f := flags("analyze")
 		artifact := f.String("artifact", "", "Wasm input file")
-		featureProfile := f.String("features", "default", "pinned wasmparser validation profile: default, wasm1, wasm2, wasm3")
+		featureProfile := f.String("features", "default", "pinned wasmparser validation profile: default, wasm1, wasm2, wasm3, all")
 		if e = f.Parse(args[1:]); e != nil {
 			return e
 		}
@@ -583,6 +583,26 @@ func run(ctx context.Context, args []string) error {
 		}
 		fmt.Printf("Imported %d workload contracts into %s\n", len(workloads), *out)
 		return nil
+	case "corpus":
+		f := flags("corpus")
+		suite := f.String("suite", "calls", "source-defined corpus suite")
+		out := f.String("out", "corpus.json", "new suite manifest; artifacts are written beside it")
+		if e = f.Parse(args[1:]); e != nil {
+			return e
+		}
+		manifest, e := filepath.Abs(*out)
+		if e != nil {
+			return e
+		}
+		workloads, e := corpus.Generate(manifest+".artifacts", *suite)
+		if e != nil {
+			return e
+		}
+		if e = experiment.WriteJSON(manifest, workloads); e != nil {
+			return e
+		}
+		fmt.Printf("Built %d %s corpus workloads from Go source into %s\n", len(workloads), *suite, manifest)
+		return nil
 	case "help", "--help", "-h":
 		usage()
 		return nil
@@ -650,6 +670,13 @@ func run(ctx context.Context, args []string) error {
 				if e = cmd.Run(); e != nil {
 					return e
 				}
+			case "wasmtime-component-async":
+				cmd := exec.CommandContext(ctx, "cargo", "build", "--release", "--locked", "--features", "component-async-probes", "--target-dir", "target/component-async", "--bin", "adapter-wasmtime")
+				cmd.Dir = filepath.Join(root, "adapters", "wasmtime")
+				cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+				if e = cmd.Run(); e != nil {
+					return e
+				}
 			case "wasmtime", "wasmtime-winch", "wasmtime-pooling", "wasmtime-allocator", "wasmtime-winch-allocator", "wasmtime-code-lifetime", "wasmtime-winch-code-lifetime":
 				cmd := exec.CommandContext(ctx, "cargo", "build", "--release", "--locked")
 				if strings.HasSuffix(rt, "-allocator") {
@@ -675,7 +702,7 @@ func run(ctx context.Context, args []string) error {
 				if e = cmd.Run(); e != nil {
 					return e
 				}
-			case "v8", "v8-liftoff-only", "v8-optimizing-only", "v8-tier-observed", "v8-tier-traced":
+			case "v8", "v8-wasmfx", "v8-liftoff-only", "v8-optimizing-only", "v8-tier-observed", "v8-tier-traced":
 				script := "adapters/v8/adapter.mjs"
 				if rt == "v8-tier-observed" || rt == "v8-tier-traced" {
 					script = "adapters/v8/tier-adapter.mjs"
@@ -700,16 +727,18 @@ func run(ctx context.Context, args []string) error {
 	case "run", "check", "plan":
 		f := flags(args[0])
 		requireIRQ := f.Bool("require-irq-affinity", false, "require device IRQ masks disjoint from locked --cpus at run boundaries; not continuous host qualification")
-		archiveTools := f.Bool("archive-tools", true, "preserve exact runner, adapters and analyzer in the run bundle")
+		archiveTools := f.Bool("archive-tools", false, "opt in to copying exact runner, adapters and analyzer into the run bundle")
 		requirePartition := f.Bool("require-isolated-cpu-partition", false, "require empty isolated cgroup-parent and disjoint controller CPUs at run boundaries")
 		hostPolicyPath := f.String("host-policy", "", "observed host baseline JSON; immutable once locked")
-		validationProfile := f.String("validation-profile", "default", "independent admission: default, wasm1, wasm2, wasm3 (existing locks preserve their policy)")
+		validationProfile := f.String("validation-profile", "default", "independent admission: default, wasm1, wasm2, wasm3, all (existing locks preserve their policy)")
 		suite := f.String("suite", "core", "core, scaling, lifecycle, reactors, traps, floats, checkpoints, continuations, process-snapshots, process-snapshot-density, guest-density, sustained, or workload manifest path")
 		rts := f.String("runtimes", "wazero,v8", "comma-separated adapter configurations")
 		profile := f.String("profile", "timing", "timing, memory, code, counters, profiling")
 		scenarios := f.String("scenarios", "compile,instantiate,first-call,steady", "comma-separated lifecycle scenarios")
 		launches := f.Int("launches", 6, "independent process launches per cell")
 		samples := f.Int("samples", 10, "batches per launch")
+		workers := f.Int("workers", 1, "maximum concurrent isolated trial workers (1..3)")
+		samplesByScenario := f.String("samples-by-scenario", "", "JSON object overriding timing samples by scenario, e.g. {\"compile\":3,\"instantiate\":3,\"steady\":3}")
 		operations := f.Int("operations", 100, "operations per batch")
 		warmup := f.Int("warmup", 3, "retained warmup batches for steady execution")
 		sustainedDuration := f.Duration("sustained-duration", 0, "minimum cumulative measured API time for sustained scenario; fixed samples, not a wall-time/service throughput target")
@@ -729,12 +758,19 @@ func run(ctx context.Context, args []string) error {
 		if e = f.Parse(args[1:]); e != nil {
 			return e
 		}
+		var scenarioSamples map[string]int
+		if strings.TrimSpace(*samplesByScenario) != "" {
+			if e = json.Unmarshal([]byte(*samplesByScenario), &scenarioSamples); e != nil {
+				return fmt.Errorf("invalid --samples-by-scenario JSON: %w", e)
+			}
+		}
 		var lock experiment.Lock
 		base := root
 		validationExplicit := false
 		memsExplicit := false
 		hostPolicyExplicit := false
 		partitionExplicit := false
+		workersExplicit := false
 		irqExplicit := false
 		archiveExplicit := false
 		sustainedExplicit := false
@@ -751,6 +787,9 @@ func run(ctx context.Context, args []string) error {
 			if v.Name == "require-isolated-cpu-partition" {
 				partitionExplicit = true
 			}
+			if v.Name == "workers" {
+				workersExplicit = true
+			}
 			if v.Name == "host-policy" {
 				hostPolicyExplicit = true
 			}
@@ -762,6 +801,9 @@ func run(ctx context.Context, args []string) error {
 			}
 		})
 		if *lockPath != "" {
+			if workersExplicit {
+				return fmt.Errorf("--workers cannot override an existing lock")
+			}
 			if irqExplicit {
 				return fmt.Errorf("--require-irq-affinity cannot override an existing lock")
 			}
@@ -799,7 +841,7 @@ func run(ctx context.Context, args []string) error {
 			if e != nil {
 				return e
 			}
-			lock, e = experiment.NewLock(experiment.Options{SustainedPostCollection: *sustainedPostCollection, SustainedDuration: *sustainedDuration, PhaseBarriers: *phaseBarriers, Resources: agent.ResourcePolicy{CgroupParent: *cgroupParent, MemoryMaxBytes: *memoryMax, DisableSwap: *noSwap, CPUQuotaUS: *cpuQuota, CPUs: *cpus, Mems: *mems, PidsMax: *pidsMax}, Suite: *suite, Profile: *profile, Scenarios: strings.Split(*scenarios, ","), Launches: *launches, Samples: *samples, Operations: *operations, Warmup: *warmup, Seed: *seed, Timeout: *timeout, Check: args[0] == "check"}, runtimes, workloads)
+			lock, e = experiment.NewLock(experiment.Options{Workers: *workers, SustainedPostCollection: *sustainedPostCollection, SustainedDuration: *sustainedDuration, ScenarioSamples: scenarioSamples, PhaseBarriers: *phaseBarriers, Resources: agent.ResourcePolicy{CgroupParent: *cgroupParent, MemoryMaxBytes: *memoryMax, DisableSwap: *noSwap, CPUQuotaUS: *cpuQuota, CPUs: *cpus, Mems: *mems, PidsMax: *pidsMax}, Suite: *suite, Profile: *profile, Scenarios: strings.Split(*scenarios, ","), Launches: *launches, Samples: *samples, Operations: *operations, Warmup: *warmup, Seed: *seed, Timeout: *timeout, Check: args[0] == "check"}, runtimes, workloads)
 			if e != nil {
 				return e
 			}
@@ -1275,6 +1317,7 @@ func usage() {
   qualification-public-key --seed-file /secure/operator.seed --out operator-public.json
   qualification-sign --run runs/CONFIRMATION --statement reviewed.json --seed-file /secure/operator.seed --out signed.json
   build --runtimes wazero,v8      Build independent embedding adapters
+  corpus --suite calls --out calls.json  Build the source-defined call corpus
   source-lock --recipe recipe.json --out source.lock.json
   source-build --lock source.lock.json --out builds/ID
   source-rebuild --bundle builds/ID --out builds/REPLAY

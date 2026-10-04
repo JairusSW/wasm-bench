@@ -68,6 +68,9 @@ func Module(kind string, size int) []byte {
 }
 
 func Generate(root, suite string) ([]protocol.Workload, error) {
+	if suite == "calls" {
+		return generateCalls(root)
+	}
 	if suite == "process-snapshot-density" {
 		return generateSnapshotDensity(root)
 	}

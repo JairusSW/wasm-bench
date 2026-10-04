@@ -2,6 +2,9 @@
 import readline from 'node:readline';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
+import os from 'node:os';
+import path from 'node:path';
+import {WASI} from 'node:wasi';
 import {profileRun} from './profiling.mjs';
 import * as harness from './harness.mjs';
 import {encodeFloats, verifyFloats, validateFloat, numericSignature, floatArguments} from './floats.mjs';
@@ -22,6 +25,18 @@ function compilerDescription(description) {
 }
 
 let prep, bytes, module, instance, imports;
+const featureProbes = {"MEMORY64": "AGFzbQEAAAABBgFgAX8BfwMCAQAFBQEFAoACBxYCBm1lbW9yeQIACWJlbmNobWFyawAACj0BOwECfwNAIAICfyABQf8/cUECdK0gATYCACABQf8/cUECdK0oAgALaiECIAFBAWohASABIABJDQALIAILAB4EbmFtZQIMAQADAAFuAQFpAgFhAwkBAAEABGxvb3A=", "EXCEPTIONS": "AGFzbQEAAAABCgJgAX8AYAF/AX8DAgEBDQMBAAAHDQEJYmVuY2htYXJrAAAKLQErAQJ/A0AgAgJ/H0ABAAAAIAEIAAsAC2ohAiABQQFqIQEgASAASQ0ACyACCwApBG5hbWUCDAEAAwABbgEBaQIBYQMOAQACAARsb29wAQNvdXQLBAEAAXQ=", "GC": "AGFzbQEAAAABBgFgAX8BfwMCAQAHDQEJYmVuY2htYXJrAAAKJAEiAQJ/A0AgAiAB+xz7HmohAiABQQFqIQEgASAASQ0ACyACCwAeBG5hbWUCDAEAAwABbgEBaQIBYQMJAQABAARsb29w", "RELAXED_SIMD": "AGFzbQEAAAABBgFgAX8BfwMCAQAHDQEJYmVuY2htYXJrAAAKOAE2AQJ/A0AgAiABs/0TQwAAAED9E0MAAIA//RP9hQL9HwKpaiECIAFBAWohASABIABJDQALIAILAB4EbmFtZQIMAQADAAFuAQFpAgFhAwkBAAEABGxvb3A=", "STACK_SWITCHING": "AGFzbQEAAAABCAJgAX8Bf10AAwMCAAAHDQEJYmVuY2htYXJrAAEJBQEDAAEAChUCBwAgAEEHagsLACAA0gDgAeMBAAsAFwRuYW1lAQcBAAR0YXNrBAcCAAFmAQFj", "MULTI_MEMORY": "AGFzbQEAAAABBgFgAX8BfwMCAQAFBwIBAgIBAgIHDQEJYmVuY2htYXJrAAAKWwFZAQJ/A0AgAgJ/IAFB/z9xQQJ0IAE2AgAgAUH/P3FBAnQgAUEHajZCAQAgAUH/P3FBAnQoQgEAIAFB/z9xQQJ0KAIAawtqIQIgAUEBaiEBIAEgAEkNAAsgAgsAJwRuYW1lAgwBAAMAAW4BAWkCAWEDCQEAAQAEbG9vcAYHAgABYQEBYg=="};
+const validatorFeatures = {namespace: "wasmparser/0.251.0", evidence: "Representative valid proposal modules tested with WebAssembly.validate under the recorded Node flags; this gates unavailable configurations, not proposal conformance", supported: Object.fromEntries(Object.entries(featureProbes).map(([name, encoded]) => [name, WebAssembly.validate(Buffer.from(encoded, "base64"))]))};
+
+function stringBuiltinsAvailable() {
+  try {
+    const bytes=Buffer.from("AGFzbQEAAAABDAJgAm9/AX9gAX8BfwJDAgdzdHJpbmdzGmFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6A28ADndhc206anMtc3RyaW5nCmNoYXJDb2RlQXQAAAMCAQEHDQEJYmVuY2htYXJrAAEKJwElAQJ/A0AgAiMAIAFBGnAQAGohAiABQQFqIQEgASAASQ0ACyACCwAtBG5hbWUBBwEABGNoYXICDAEBAwABbgEBaQIBYQMJAQEBAARsb29wBwQBAAFz","base64");
+    const module=new WebAssembly.Module(bytes,{builtins:["js-string"],importedStringConstants:"strings"});
+    return new WebAssembly.Instance(module,{}).exports.benchmark(1)===97;
+  } catch { return false; }
+}
+function compileModule(bytes) { return prep?.workload.host_profile === "js-string-builtins-v1" ? new WebAssembly.Module(bytes, {builtins: ["js-string"], importedStringConstants: "strings"}) : new WebAssembly.Module(bytes); }
+
 let floatSignature;
 const scenarios = ['harness-calibration', 'compile', 'instantiate', 'app-init', 'first-call', 'steady', 'trajectory', 'teardown', 'density', 'sustained'];
 const hash = b => crypto.createHash('sha256').update(b).digest('hex');
@@ -68,7 +83,93 @@ function verify(result,target=instance) {
   }
   for(const check of prep.workload.oracle.memory||[]){const want=Buffer.from(check.hex,'hex');const memory=target.exports.memory;const offset=base+check.offset;if(!Number.isSafeInteger(offset)||offset<0||offset>0xffffffff||!memory||offset+want.length>memory.buffer.byteLength||!Buffer.from(memory.buffer,offset,want.length).equals(want))throw new Error('incorrect result: memory oracle mismatch');}
 }
-function setup() { module ??= new WebAssembly.Module(bytes); instance ??= initialize(construct()); }
+function wasiFixture(command) {
+  if(command.stdout_normalize)throw new Error('unsupported WASI stdout normalizer');
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'wasmbench-v8-wasi-'));
+  const streams=fs.mkdtempSync(path.join(os.tmpdir(),'wasmbench-v8-wasi-streams-'));
+  const staged=new Map();
+  const readonlyDirs=new Set([root]);
+  let stdinFd,stdoutFd,stderrFd;
+  try {
+    for(const [name,file] of Object.entries(command.files||{})){
+      if(!name||name.startsWith('/')||name.split('/').some(part=>!part||part==='.'||part==='..'))throw new Error('invalid WASI fixture path');
+      const target=path.join(root,...name.split('/'));
+      fs.mkdirSync(path.dirname(target),{recursive:true,mode:0o700});
+      for(let directory=path.dirname(target);directory===root||directory.startsWith(root+path.sep);directory=path.dirname(directory)){readonlyDirs.add(directory);if(directory===root)break;}
+      const contents=file.path?fs.readFileSync(file.path):Buffer.from(file.data||'','base64');
+      if(file.size!==undefined&&contents.length!==Number(file.size))throw new Error(`WASI fixture size mismatch: ${name}`);
+      if(file.sha256&&hash(contents)!==file.sha256)throw new Error(`WASI fixture digest mismatch: ${name}`);
+      // Node's WASI Preview 1 guest does not see the owner-only host fixture
+      // permissions as readable. Keep fixtures immutable but world-readable.
+      fs.writeFileSync(target,contents,{mode:0o444,flag:'wx'});staged.set(name,target);
+    }
+    let input=Buffer.from(command.stdin||'','base64');
+    if(command.stdin_file){const file=staged.get(command.stdin_file);if(!file)throw new Error(`WASI stdin fixture missing: ${command.stdin_file}`);input=fs.readFileSync(file);}
+    const stdinPath=path.join(streams,'stdin'),stdoutPath=path.join(streams,'stdout'),stderrPath=path.join(streams,'stderr');
+    fs.writeFileSync(stdinPath,input,{mode:0o600});fs.writeFileSync(stdoutPath,'',{mode:0o600});fs.writeFileSync(stderrPath,'',{mode:0o600});
+    for(const directory of [...readonlyDirs].sort((a,b)=>b.length-a.length))fs.chmodSync(directory,0o555);
+    stdinFd=fs.openSync(stdinPath,'r');stdoutFd=fs.openSync(stdoutPath,'r+');stderrFd=fs.openSync(stderrPath,'r+');
+    // This harness only exposes pinned fixtures; Node documents that its WASI
+    // preopens are not a security boundary for untrusted guest modules.
+    return {root,stdinFd,stdoutFd,stderrFd,stdoutPath,stderrPath,close(){for(const fd of [stdinFd,stdoutFd,stderrFd])try{fs.closeSync(fd)}catch{};for(const directory of readonlyDirs)try{fs.chmodSync(directory,0o700)}catch{};fs.rmSync(root,{recursive:true,force:true});fs.rmSync(streams,{recursive:true,force:true});}};
+  } catch(error) {
+    for(const fd of [stdinFd,stdoutFd,stderrFd])if(fd!==undefined)try{fs.closeSync(fd)}catch{}
+    for(const directory of readonlyDirs)try{fs.chmodSync(directory,0o700)}catch{};fs.rmSync(root,{recursive:true,force:true});fs.rmSync(streams,{recursive:true,force:true});throw error;
+  }
+}
+function runWasiCommand(compiled,scenario) {
+  const w=prep.workload,c=w.command,fixture=wasiFixture(c);
+  try {
+    const wasi=new WASI({version:'preview1',args:c.argv,env:{},preopens:{'/':fixture.root},stdin:fixture.stdinFd,stdout:fixture.stdoutFd,stderr:fixture.stderrFd,returnOnExit:true});
+    let created,exitCode,elapsed;
+    if(scenario==='instantiate'){
+      const start=now();created=new WebAssembly.Instance(compiled,wasi.getImportObject());elapsed=Number(now()-start);
+      exitCode=wasi.start(created);
+    }else if(scenario==='first-call'){
+      created=new WebAssembly.Instance(compiled,wasi.getImportObject());const start=now();exitCode=wasi.start(created);elapsed=Number(now()-start);
+    }else if(scenario==='steady'){
+      const start=now();created=new WebAssembly.Instance(compiled,wasi.getImportObject());exitCode=wasi.start(created);elapsed=Number(now()-start);
+    }else throw new Error(`unsupported WASI command scenario: ${scenario}`);
+    const stdout=fs.readFileSync(fixture.stdoutPath),stderr=fs.readFileSync(fixture.stderrPath);
+    if(stdout.length>c.output_limit_bytes||stderr.length>c.output_limit_bytes)throw new Error(`WASI output exceeds ${c.output_limit_bytes} bytes per stream`);
+    const result={exit_code:exitCode>>>0,stdout_sha256:hash(stdout),stderr_sha256:hash(stderr),stdout_bytes:stdout.length,stderr_bytes:stderr.length};
+    if(c.stdout_sha256&&result.stdout_sha256!==c.stdout_sha256)throw new Error('incorrect WASI stdout digest');
+    if(c.stderr_sha256&&result.stderr_sha256!==c.stderr_sha256)throw new Error('incorrect WASI stderr digest');
+    if(result.exit_code!==(c.exit_code>>>0))throw new Error(`incorrect WASI exit code: ${result.exit_code}`);
+    return {elapsed_ns:elapsed,verified:true,sample_type:'individual_operation',operations:1,result,command_result:result};
+  } finally {fixture.close();}
+}
+function runWasi(r) {
+  const w=prep.workload;
+  if(prep.profile!=='timing'||r.phase_barriers||!Number.isInteger(r.samples)||r.samples<1||r.samples>100000)
+    throw new Error('WASI Preview 1 command supports unbarriered timing batches only');
+  if(!['compile','instantiate','first-call','steady'].includes(r.scenario))return {status:'unsupported',reason:'Node WASI Preview 1 exposes command execution only'};
+  if(r.scenario!=='steady'&&(r.operations!==1||r.warmup!==0))throw new Error('WASI compile, instantiate and first-call require one operation and no warmup');
+  if(!Number.isInteger(r.operations)||r.operations<1||r.operations>1000000||!Number.isInteger(r.warmup)||r.warmup<0||r.warmup>100000)throw new Error('invalid WASI command batch');
+  const samples=[];
+  if(r.scenario==='steady'){
+    const compiled=module||compileModule(bytes);
+    for(let i=0;i<r.warmup;i++){
+      const warm=runWasiCommand(compiled,'steady');
+      samples.push({index:i,warmup:true,elapsed_ns:warm.elapsed_ns,operations:1,sample_type:'individual_operation',verified:true,command_result:warm.command_result});
+    }
+  }
+  for(let i=0;i<r.samples;i++){
+    let elapsed_ns=0,command_result;
+    if(r.scenario==='compile'){
+      const start=now(),compiled=compileModule(bytes);elapsed_ns=Number(now()-start);
+      const verification=runWasiCommand(compiled,'first-call');if(!verification.verified)throw new Error('WASI compile verification failed');command_result=verification.command_result;
+    }else if(r.scenario==='steady'){
+      const compiled=module||compileModule(bytes);
+      for(let n=0;n<r.operations;n++){const result=runWasiCommand(compiled,'steady');elapsed_ns+=result.elapsed_ns;command_result=result.command_result;}
+    }else{
+      const compiled=module||compileModule(bytes),result=runWasiCommand(compiled,r.scenario);elapsed_ns=result.elapsed_ns;command_result=result.command_result;
+    }
+    samples.push({index:i+(r.scenario==='steady'?r.warmup:0),warmup:false,elapsed_ns,operations:r.scenario==='steady'?r.operations:1,sample_type:r.scenario==='steady'&&r.operations>1?'batch_average':'individual_operation',verified:true,command_result});
+  }
+  return {samples};
+}
+function setup() { module ??= compileModule(bytes); instance ??= initialize(construct()); }
 function observation(metric, value, scope, phase) {
   return {metric, value, scope, phase, definition_version: 1, unit: 'bytes', collector: 'node:process.memoryUsage', collector_version: process.version, quality: 'engine_reported', profile: 'memory', status: 'available', normalization_denominator: 'process_snapshot'};
 }
@@ -127,7 +228,7 @@ async function runDensity(r,req) {
     const results=[];
     try {
       const start=now();
-      compiled=new WebAssembly.Module(bytes);
+      compiled=compileModule(bytes);
       if(WebAssembly.Module.imports(compiled).length)throw new Error('density requires import-free modules');
       for(let j=0;j<d.instances;j++){
         held.push(initialize(new WebAssembly.Instance(compiled,{})));
@@ -156,7 +257,7 @@ async function compilePhases(req) {
     await barrier(req,i,'before_compile');
     const before=prep.profile==='memory'?process.memoryUsage():undefined;
     const start=now();
-    let compiled=new WebAssembly.Module(bytes);
+    let compiled=compileModule(bytes);
     const elapsed=now()-start;
     const after=prep.profile==='memory'?process.memoryUsage():undefined;
     await barrier(req,i,'compiled');
@@ -183,13 +284,13 @@ async function runVectors(r,req) {
     if(!Number.isSafeInteger(total)||total>w.vector_byte_budget)throw new Error('vector input/oracle byte budget exceeded');
   }
   const cases=v.cases.map(c=>{const input=Buffer.alloc(c.len);if(mod>0)for(let j=0;j<input.length;j++)input[j]=(j%mod)&255;return {input,expected:Buffer.from(c.out,'hex')};});
-  const shared=['compile','teardown'].includes(r.scenario)?undefined:new WebAssembly.Module(bytes);
+  const shared=['compile','teardown'].includes(r.scenario)?undefined:compileModule(bytes);
   const timedCalls=['first-call','steady'].includes(r.scenario),warmup=r.scenario==='steady'?r.warmup:0,samples=[];
   for(let i=-warmup;i<r.samples;i++){
     if(r.phase_barriers&&r.scenario==='compile')await barrier(req,i,'before_compile');
     let before=prep.profile==='memory'?process.memoryUsage():undefined;
     let compiled=shared,elapsed=0n;
-    if(['compile','teardown'].includes(r.scenario)){const start=now();compiled=new WebAssembly.Module(bytes);elapsed=now()-start;}
+    if(['compile','teardown'].includes(r.scenario)){const start=now();compiled=compileModule(bytes);elapsed=now()-start;}
     const compileAfter=r.phase_barriers&&r.scenario==='compile'?process.memoryUsage():undefined;
     if(r.phase_barriers&&r.scenario==='compile')await barrier(req,i,'compiled');
     if(r.phase_barriers&&r.scenario==='instantiate'){
@@ -255,7 +356,7 @@ async function runVectors(r,req) {
 async function runAppInit(r,req) {
   const w=prep.workload;
   if(!w.initialize||w.abi!=='core'||w.oracle.kind!=='exact_u64'||w.vectors||w.command||(r.phase_barriers&&prep.profile!=='memory')||!['timing','memory'].includes(prep.profile)||!Number.isInteger(r.samples)||r.samples>100000)throw new Error('unsupported app-init contract/profile/batch');
-  const compiled=new WebAssembly.Module(bytes),samples=[];
+  const compiled=compileModule(bytes),samples=[];
   for(let i=0;i<r.samples;i++) {
     let target=new WebAssembly.Instance(compiled,imports),init=target.exports[w.initialize];
     if(typeof init!=='function'||init.length!==0)throw new Error('initializer must be () -> ()');
@@ -278,7 +379,7 @@ async function runAppInit(r,req) {
   return {samples};
 }
 async function steadyCounters(r,req) {
-  const compiled=new WebAssembly.Module(bytes),samples=[];
+  const compiled=compileModule(bytes),samples=[];
   const target=initialize(new WebAssembly.Instance(compiled,imports));
   const fn=target.exports[prep.workload.export],args=argumentsForCall();
   if(typeof fn!=='function')throw new Error('missing workload export');
@@ -299,7 +400,7 @@ async function steadyCounters(r,req) {
   return {samples};
 }
 async function firstCallCounters(r,req) {
-  const compiled=new WebAssembly.Module(bytes),samples=[];
+  const compiled=compileModule(bytes),samples=[];
   for(let i=0;i<r.samples;i++) {
     let target=initialize(new WebAssembly.Instance(compiled,imports));
     let fn=target.exports[prep.workload.export];
@@ -322,7 +423,7 @@ async function firstCallCounters(r,req) {
 async function instantiatePhases(r,req) {
   const w=prep.workload;
   if(w.abi!=='core'||!['exact_u64','float_bits_v1'].includes(w.oracle.kind)||w.vectors||w.command||!['memory','counters'].includes(prep.profile)||!['stateless','fresh_instance_per_sample'].includes(w.reset)||!Number.isInteger(r.samples)||r.samples<1||r.samples>100000)throw new Error('unsupported instantiation barriers');
-  const compiled=new WebAssembly.Module(bytes),samples=[];
+  const compiled=compileModule(bytes),samples=[];
   for(let i=0;i<r.samples;i++) {
     await barrier(req,i,'before_instantiate');
     const before=prep.profile==='memory'?process.memoryUsage():undefined,start=now();
@@ -343,7 +444,7 @@ function runTraps(r) {
   const w=prep.workload, codes={unreachable:'unreachable','memory access out of bounds':'memory_out_of_bounds','divide by zero':'integer_divide_by_zero','divide result unrepresentable':'integer_overflow'};
   if(!Object.values(codes).includes(w.oracle.expected_trap)||w.abi!=='core'||w.reset!=='fresh_instance_per_sample'||!w.export||w.host_profile||w.initialize||w.input||w.command||w.vectors||(w.args||[]).length||(w.oracle.expected||[]).length||(w.oracle.memory||[]).length||w.oracle.output_pointer_export)throw new Error('unsupported or ambiguous invocation-trap contract');
   if(!['timing','memory'].includes(prep.profile)||r.phase_barriers||!['first-call','steady'].includes(r.scenario)||!Number.isInteger(r.samples)||r.samples<1||r.samples>100000||!Number.isInteger(r.warmup)||r.warmup<0||r.warmup>100000||!Number.isInteger(r.operations)||r.operations<1||r.operations>1000000)throw new Error('unsupported trap scenario/profile/batch');
-  const compiled=new WebAssembly.Module(bytes),warmup=r.scenario==='steady'?r.warmup:0,samples=[];
+  const compiled=compileModule(bytes),warmup=r.scenario==='steady'?r.warmup:0,samples=[];
   for(let i=0;i<r.samples+warmup;i++){
     const target=new WebAssembly.Instance(compiled,Object.create(null)),f=target.exports[w.export];
     if(typeof f!=='function'||f.length!==0)throw new Error('missing or parameterized trap export');
@@ -368,8 +469,9 @@ async function handle(req,profiled=false) {
     case 'describe': {
       if(compilerMode!=='production-default')compilerModeProbe??=verifyCompilerMode(compilerMode);
       return {description: compilerDescription({
-      runtime: 'v8', runtime_version: process.versions.v8, backend: compilerMode==='production-default'?'production-default-tiering':compilerMode, embedding: 'Node.js WebAssembly API', build: process.version,
+      validator_features: validatorFeatures, runtime: 'v8', runtime_version: process.versions.v8, backend: compilerMode==='production-default'?'production-default-tiering':compilerMode, embedding: 'Node.js WebAssembly API', build: process.version,
       effective_configuration: {
+        wasi_preview1_policy:'Node node:wasi Preview 1 host; command argv and pinned files only; fresh per-sample instance; output captured through adapter-owned files; timing excludes fixture staging and verification; steady samples use a fresh instance per command operation; Node does not promise a secure WASI filesystem sandbox',
         vector_instantiate_phases_policy:'fresh JS instance; prepared module/imports retained; Wasm start included; explicit initialization and ordered vector verification outside API window; release drops instance/export references, not physical reclamation; no forced GC',
         vector_first_call_phases_policy:'fresh initialized instance; pointers and first input prepared before before_first_call; first_call_returned follows last ordered call before its output oracle; memory window includes intercase input writes and oracle checks, unlike sequence_call_sum timers; final oracle and verified instance release follow returned barrier; compiled module retained; no forced reclamation',
         harness_calibration_policy:harness.policy,
@@ -379,18 +481,22 @@ async function handle(req,profiled=false) {
         counter_first_call_policy:'fresh initialized instance per sample; module retained, engine/cache/GC uncontrolled; export and arguments resolved before collection; exactly one requested call; result normalization/verification/reference release after; no memory snapshots; background compiler and transport work included in cgroup window',
         counter_policy:'core exact scalar compile/instantiate phase handshakes; one operation, no warmup; no memory snapshots; external cgroup window includes transport, adapter and background compiler work; verification and reference release excluded; API return is not proof of final tier completion; engine/cache/GC remain uncontrolled',
         density_policy:'shared_module only; one new JS Module wrapper and fresh simultaneous instances per sample; process V8 engine reused, internal code cache uncontrolled; timer includes compile/instantiate/start/init/input/invoke, not engine construction; release drops JS references only, no forced GC or engine disposal',node: process.version, flags: JSON.stringify(process.execArgv), module_cache: 'uncontrolled', tiering: 'production-default', instantiate_release_policy: 'drop verified instance references; compiled module retained; no engine disposal or forced GC', app_init_release_policy: 'drop verified instance and initializer references; compiled module retained; no engine disposal or forced GC', teardown_policy: 'verify each fresh instance before timing JS instance/module reference release; no engine disposal or forced GC; reclamation unobserved'},
-      capabilities: {'can_vector_first-call_phases':true,can_vector_instantiate_phases:true,can_control_compiler_mode:false,can_sustained_execution:true,can_sustained_post_collection:false,can_profile_v8_cpu_steady:true,can_counter_steady:true,'can_counter_first-call':true,can_counter_compile:true,can_counter_instantiate:true,can_density:true,can_density_separate_engines:false,can_float_teardown: true, can_float_phases: true, can_float_trajectory: true, can_verify_float_bits_v1: true, can_verify_invocation_traps: true, can_measure_invocation_traps: true, can_run_vectors: true, can_vector_compile_phases: true, can_vector_teardown_phases: true, can_compile_separately: true, can_instantiate_separately: true, can_disable_code_cache: false, can_observe_tiers: false, can_export_native_code: false, can_measure_host_allocations: false, can_snapshot: false},
-      scenarios, phase_barrier_scenarios:['compile','teardown','app-init','instantiate','density','first-call','steady'], phase_release_policy:'drop module and instance JS references; engine caches and garbage collection uncontrolled; no forced GC', abis: ['core'], features: ['mvp', 'bulk-memory', 'simd', 'reference-types', 'multi-value']
-    })}; }
+      capabilities: {'can_host_profile_js-string-builtins-v1':stringBuiltinsAvailable(),'can_host_profile_threads-defined-v1':true,'can_vector_first-call_phases':true,can_vector_instantiate_phases:true,can_control_compiler_mode:false,can_sustained_execution:true,can_sustained_post_collection:false,can_profile_v8_cpu_steady:true,can_counter_steady:true,'can_counter_first-call':true,can_counter_compile:true,can_counter_instantiate:true,can_density:true,can_density_separate_engines:false,can_float_teardown: true, can_float_phases: true, can_float_trajectory: true, can_verify_float_bits_v1: true, can_verify_invocation_traps: true, can_measure_invocation_traps: true, can_run_vectors: true, can_run_commands:true, can_vector_compile_phases: true, can_vector_teardown_phases: true, can_compile_separately: true, can_instantiate_separately: true, can_disable_code_cache: false, can_observe_tiers: false, can_export_native_code: false, can_measure_host_allocations: false, can_snapshot: false},
+      scenarios, phase_barrier_scenarios:['compile','teardown','app-init','instantiate','density','first-call','steady'], phase_release_policy:'drop module and instance JS references; engine caches and garbage collection uncontrolled; no forced GC', abis: ['core','wasi-command'], features: ['mvp', 'bulk-memory', 'simd', 'reference-types', 'multi-value','wasi-preview1']
+      })}; }
     case 'prepare':
       if(compilerMode!=='production-default')compilerModeProbe??=verifyCompilerMode(compilerMode);
       prep = req.prepare;
       floatSignature=undefined; module=instance=undefined;
-      if(prep.workload.host_profile&&!['identity-v1','assemblyscript-abort-v1'].includes(prep.workload.host_profile))throw new Error('unsupported host profile');
+      const wasiWorkload=prep.workload.abi==='wasi-command';
+      if(prep.workload.host_profile&&!['identity-v1','assemblyscript-abort-v1','js-string-builtins-v1','threads-defined-v1','wasi-preview1-readonly-v1'].includes(prep.workload.host_profile))throw new Error('unsupported host profile');
       imports=Object.create(null);
       if(prep.workload.host_profile==='identity-v1')imports.wasmbench=Object.assign(Object.create(null),{identity:v=>v});
       if(prep.workload.host_profile==='assemblyscript-abort-v1')imports.env=Object.assign(Object.create(null),{abort:(message,file,line,column)=>{throw new Error(`AssemblyScript abort: message_ptr=${message>>>0} file_ptr=${file>>>0} line=${line>>>0} column=${column>>>0}`);}});
-      if (prep.workload.abi !== 'core' || !['stateless','fresh_instance_per_sample'].includes(prep.workload.reset)) throw new Error('unsupported ABI or reset policy');
+      if(wasiWorkload){
+        if(prep.profile!=='timing'||prep.workload.host_profile!=='wasi-preview1-readonly-v1'||prep.workload.oracle.kind!=='exact_command'||!prep.workload.command||prep.workload.reset!=='fresh_instance_per_sample'||prep.workload.command.stdout_normalize)
+          return {status:'unsupported',reason:'Node WASI Preview 1 adapter supports timing only for exact-command, fresh-instance workloads without stdout normalization'};
+      }else if (prep.workload.abi !== 'core' || !['stateless','fresh_instance_per_sample'].includes(prep.workload.reset)) throw new Error('unsupported ABI or reset policy');
       bytes = fs.readFileSync(prep.artifact);
       if (hash(bytes) !== prep.artifact_sha256) throw new Error('artifact digest mismatch');
       if(prep.workload.oracle.kind==='float_bits_v1') {
@@ -404,6 +510,7 @@ async function handle(req,profiled=false) {
       const r = req.run;
       if(r?.scenario==='harness-calibration'){harness.validate(prep,r);setup();verify(invoke());return harness.run(r);}
       if(r?.scenario==='sustained')return runSustained(r);
+      if(prep.workload.abi==='wasi-command')return runWasi(r);
       if(prep.profile==='counters') {
         const w=prep.workload;
         if(w.abi!=='core'||w.command||w.vectors||w.density||w.oracle.kind!=='exact_u64'||!['stateless','fresh_instance_per_sample'].includes(w.reset)||!w.export)throw new Error('counters require a core scalar exact oracle');
@@ -453,7 +560,7 @@ async function handle(req,profiled=false) {
           for (let j = 0; j < operations; j++) {
             const start = now();
             switch (r.scenario) {
-              case 'compile': { const compiled = new WebAssembly.Module(bytes); elapsed += now() - start; const created=initialize(new WebAssembly.Instance(compiled,imports));verify(invoke(created),created); break; }
+              case 'compile': { const compiled = compileModule(bytes); elapsed += now() - start; const created=initialize(new WebAssembly.Instance(compiled,imports));verify(invoke(created),created); break; }
               case 'instantiate': { const created = construct(); elapsed += now() - start; initialize(created);verify(invoke(created),created); break; }
               case 'teardown': instance = module = undefined; elapsed += now() - start; break;
             }

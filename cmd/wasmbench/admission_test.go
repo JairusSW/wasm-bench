@@ -40,8 +40,8 @@ func TestPlanAdmissionDefaultAndLockedPolicy(t *testing.T) {
 		if lock.Analyzer == nil || lock.Analyzer.Profile != profile || lock.Analyzer.SHA256 == "" {
 			t.Fatalf("%+v", lock.Analyzer)
 		}
-		if !lock.ArchiveTools {
-			t.Fatal("new plan did not preserve tools by default")
+		if lock.ArchiveTools {
+			t.Fatal("new plan archived tools by default")
 		}
 		if err := run(ctx, []string{"plan", "--lock", profile + ".lock", "--out", profile + "-copy.lock"}); err != nil {
 			t.Fatal(err)
@@ -65,6 +65,21 @@ func TestPlanAdmissionDefaultAndLockedPolicy(t *testing.T) {
 		t.Fatal("opt-out ignored", err)
 	}
 	for _, value := range []string{"true", "false"} {
+		name := "archive-" + value + ".lock"
+		if err := run(ctx, []string{"plan", "--runtimes", "wazero", "--archive-tools=" + value, "--out", name}); err != nil {
+			t.Fatal(err)
+		}
+		var explicit experiment.Lock
+		if err := experiment.ReadJSON(name, &explicit); err != nil || explicit.ArchiveTools != (value == "true") {
+			t.Fatal("explicit archive policy ignored", err)
+		}
+		if err := run(ctx, []string{"plan", "--lock", name, "--out", name + ".copy"}); err != nil {
+			t.Fatal(err)
+		}
+		var preserved experiment.Lock
+		if err := experiment.ReadJSON(name+".copy", &preserved); err != nil || preserved.ArchiveTools != explicit.ArchiveTools {
+			t.Fatal("existing archive policy changed", err)
+		}
 		if err := run(ctx, []string{"plan", "--lock", "default.lock", "--archive-tools=" + value}); err == nil || !strings.Contains(err.Error(), "cannot override") {
 			t.Fatal(err)
 		}

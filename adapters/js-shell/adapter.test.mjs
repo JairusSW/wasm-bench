@@ -11,9 +11,9 @@ const sha=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 const work=()=>({abi:'core',reset:'stateless',export:'run',args:['18446744073709551615'],oracle:{kind:'exact_u64',expected:['18446744073709551615']}});
 const prepare=(bytes=wasm,w=work(),profile='timing')=>({method:'prepare',prepare:{artifact:'fixture',artifact_sha256:sha(bytes),profile,workload:w}});
 const run=scenario=>({method:'run',run:{scenario,samples:2,operations:scenario==='steady'?3:1,warmup:scenario==='steady'?1:0}});
-async function session(requests,bytes=wasm,overrides={}){
+async function session(requests,bytes=wasm,overrides={},argv){
   const lines=requests.map((r,i)=>JSON.stringify({version:1,id:i+1,...r})),out=[];
-  const context={arguments:['runtime=v8-shell','binary-sha256='+ 'a'.repeat(64)],readline:()=>lines.shift()||null,print:s=>out.push(JSON.parse(s)),readbuffer:()=>Uint8Array.from(bytes).buffer,performance,WebAssembly,...overrides};
+  const context={arguments:argv||['runtime=v8-shell','binary-sha256='+ 'a'.repeat(64)],readline:()=>lines.shift()||null,print:s=>out.push(JSON.parse(s)),readbuffer:()=>Uint8Array.from(bytes).buffer,performance,WebAssembly,...overrides};
   await vm.runInNewContext(script,context);
   return out;
 }
@@ -38,6 +38,20 @@ test('extended contracts and profiles rejected',async()=>{
   assert.equal((await session([prepare(wasm,work(),'profiling')]))[0].status,'unsupported');
 });
 test('invalid batches rejected before samples',async()=>{for(const [key,value] of [['samples',0],['operations',0],['warmup',-1],['samples',100001]]){const r=run('steady');r.run[key]=value;const out=await session([prepare(),r]);assert.equal(out[1].status,'error');}});
+test('JSC forced-tier warmups are excluded from measured samples',async()=>{
+  const out=await session([prepare(),{method:'run',run:{scenario:'steady',samples:1,operations:1,warmup:0}}],wasm,{read:()=>Uint8Array.from(wasm).buffer},['runtime=jsc','tier-mode=omg-eager','binary-sha256='+'a'.repeat(64)]);
+  assert.equal(out[0].status,'ok',JSON.stringify(out[0]));assert.equal(out[1].status,'ok',JSON.stringify(out[1]));assert.equal(out[1].samples.length,1);assert.equal(out[1].samples[0].index,0);assert.equal(out[1].samples[0].warmup,false);
+});
+test('JSC preserves requested warmups but omits its additional forced-tier calls',async()=>{
+  const out=await session([prepare(),{method:'run',run:{scenario:'steady',samples:1,operations:1,warmup:1}}],wasm,{read:()=>Uint8Array.from(wasm).buffer},['runtime=jsc','tier-mode=omg-eager','binary-sha256='+'a'.repeat(64)]);
+  assert.equal(out[1].status,'ok',JSON.stringify(out[1]));assert.deepEqual(out[1].samples.map(s=>[s.index,s.warmup]),[[0,true],[1,false]]);
+});
+test('JSC host callback steady timing preserves requested warmup count',async()=>{
+  const bytes=Buffer.from('0061736d0100000001060160017f017f021601097761736d62656e6368086964656e74697479000003020100070d010962656e63686d61726b00010a08010600200010000b','hex');
+  const w={...work(),export:'benchmark',host_profile:'identity-v1',args:['7'],oracle:{kind:'exact_u64',expected:['7']}};
+  const out=await session([prepare(bytes,w),{method:'run',run:{scenario:'steady',samples:1,operations:1,warmup:3}}],bytes,{read:()=>Uint8Array.from(bytes).buffer},['runtime=jsc','tier-mode=omg-eager','binary-sha256='+'a'.repeat(64)]);
+  assert.equal(out[0].status,'ok',JSON.stringify(out[0]));assert.equal(out[1].status,'ok',JSON.stringify(out[1]));assert.deepEqual(out[1].samples.map(s=>[s.index,s.warmup]),[[0,true],[1,true],[2,true],[3,false]]);
+});
 test('fresh reset cannot be batched as stateless',async()=>{const w=work();w.reset='fresh_instance_per_sample';const out=await session([prepare(wasm,w),run('steady')]);assert.equal(out[1].status,'unsupported');});
 test('protocol and unknown scenario reject',async()=>{assert.equal((await session([{method:'describe',version:2}]))[0].status,'error');const out=await session([prepare(),run('teardown')]);assert.equal(out[1].status,'unsupported');});
 test('no wall clock fallback',async()=>{await assert.rejects(session([],wasm,{performance:undefined,preciseTime:()=>0}),/monotonic clock unavailable/);});

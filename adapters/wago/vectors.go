@@ -40,7 +40,7 @@ func (a *adapter) runVectors(r *protocol.RunRequest) ([]protocol.Sample, error) 
 	}
 	if r.Scenario != "compile" && r.Scenario != "teardown" {
 		var err error
-		a.compiled, err = wago.Compile(nil, a.wasm)
+		a.compiled, err = wago.Compile(a.compileConfig, a.wasm)
 		if err != nil {
 			return nil, err
 		}
@@ -53,7 +53,7 @@ func (a *adapter) runVectors(r *protocol.RunRequest) ([]protocol.Sample, error) 
 		if scenario == "compile" || scenario == "teardown" {
 			start := time.Now()
 			var err error
-			compiled, err = wago.Compile(nil, a.wasm)
+			compiled, err = wago.Compile(a.compileConfig, a.wasm)
 			elapsed = time.Since(start).Nanoseconds()
 			if err != nil {
 				return protocol.VectorInstance{}, 0, nil, err

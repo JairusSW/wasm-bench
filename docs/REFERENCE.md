@@ -2255,8 +2255,9 @@ versions remain provenance, not a claim that their dynamic dependencies are pinn
 `aggregate-set --out FILE.json` now writes a new set file exclusively; without
 `--out` it prints JSON. Existing files and output inside a sealed input are refused.
 
-New CLI plans preserve exact runner, adapter and analyzer files in sealed tool
-archives by default. [Tool restoration](../docs/TOOL-ARCHIVES.md) can export a new
+New CLI plans pin tools without copying them by default. Opt in with
+`--archive-tools=true` to preserve exact runner, adapter and analyzer files in sealed
+tool archives. [Tool restoration](../docs/TOOL-ARCHIVES.md) can export a new
 replay directory without overwriting installed tools:
 
 ```sh
@@ -2269,7 +2270,7 @@ Restoration changes path-bound configuration identity; it is not hermetic.
 Mach-O third-party libraries and supported Linux ELF startup libraries are pinned.
 ELF runs recheck actual loader resolution before measurement; native loader/OS
 prerequisites remain explicit. See the linked platform limits before sharing
-archives. Use `--archive-tools=false` when creating a plan to opt out of copies.
+archives. Existing locks retain their recorded archive policy.
 
 The SQLite database at `.wasmbench/index.sqlite` indexes runs and stores local
 jobs. A worker atomically claims pending jobs. A running job is never

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
+component-async-probes = ["wasmtime/component-model-async"]
 native-allocator = []
 native-code-lifetime = ["dep:rustix", "dep:wasmtime-internal-jit-icache-coherence"]
 process-snapshot = ["dep:wat"]

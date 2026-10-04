@@ -59,13 +59,25 @@ For Wasmtime or a local Wago checkout:
 | `wazero`, `wazero-interpreter` | Go | Compiler and interpreter stay separate |
 | `wasmtime`, `wasmtime-winch` | Rust | Cranelift and Winch stay separate |
 | `v8` | Node.js | Production-default tiering; controlled modes are separate configurations |
-| `v8-shell`, `spidermonkey`, `jsc`, `deno` | Direct JS engines | Import-free core integer scalar timing and memory |
+| `v8-shell`, `spidermonkey`, `jsc`, `deno` | Direct JS engines | Core integer scalar timing and memory, with the bounded `identity-v1` callback |
 | `wasmi`, `wavm`, `wasm3`, `wasmedge` | Native embeddings | Bounded core contracts; wasm3 has no separate instantiate stage |
 
 Support depends on the scenario, ABI, profile, platform and advertised adapter capabilities.
 WASI commands/reactors, bounded Emscripten hosts and Component Model profiles
 have separate contracts. See [all workflows](docs/REFERENCE.md).
 See [adapter setup and support limits](docs/ADAPTERS.md) for the additional engines.
+
+Build the host-boundary workloads directly from the repository's Go source:
+
+```sh
+./bin/wasmbench corpus --suite calls --out calls.json
+./bin/wasmbench check --suite calls.json --runtimes wasmtime,wazero,v8,jsc
+```
+
+The generated suite contains a plain exported call (host→Wasm) and a Wasm
+export that calls the `wasmbench.identity(i32) -> i32` host import. Its source,
+generator version, artifact digest and exact result oracle are retained in the
+workload manifest.
 
 ## Run an experiment
 
@@ -78,6 +90,10 @@ See [adapter setup and support limits](docs/ADAPTERS.md) for the additional engi
 ```
 
 Open the address printed by `serve` (default: `http://127.0.0.1:8080`).
+Runs retain measurements and input artifacts, but do not copy runtime binaries by
+default. Add `--archive-tools=true` to `plan` or `run` for a self-contained tool
+archive; otherwise replay requires the exact tools separately. See
+[archive storage and compaction](docs/TOOL-ARCHIVES.md).
 Select a workload and runtime configurations, toggle stages at the top, hover
 for time and memory, and click a bar to inspect its raw evidence.
 Compile, instantiate and execution share a segmented latency bar; RSS has its

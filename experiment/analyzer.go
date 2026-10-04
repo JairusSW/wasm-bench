@@ -77,7 +77,7 @@ func (a *AnalyzerLock) validate() error {
 		return nil
 	}
 	digest, err := hex.DecodeString(a.SHA256)
-	if err != nil || len(digest) != 32 || !recordedPathAbsolute(a.Executable) || !slices.Contains([]string{"default", "wasm1", "wasm2", "wasm3"}, a.Profile) || a.Name != "wasmparser" || a.Version != "0.251.0" || !slices.Contains([]string{"core-structure-v2", "core-structure-v3", "artifact-structure-v1"}, a.AnalysisVersion) {
+	if err != nil || len(digest) != 32 || !recordedPathAbsolute(a.Executable) || !slices.Contains([]string{"default", "wasm1", "wasm2", "wasm3", "all"}, a.Profile) || a.Name != "wasmparser" || a.Version != "0.251.0" || !slices.Contains([]string{"core-structure-v2", "core-structure-v3", "artifact-structure-v1"}, a.AnalysisVersion) {
 		return fmt.Errorf("invalid or unsupported analyzer lock")
 	}
 	return nil

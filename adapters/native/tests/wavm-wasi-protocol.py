@@ -70,6 +70,19 @@ with tempfile.TemporaryDirectory(prefix='wasmbench-wavm-wasi-') as directory:
             assert request('prepare',prepare=preparation)['status']=='ok'
             response=request('run',run={'scenario':'steady','samples':1,'operations':1,'warmup':0})
             assert response['status']=='error' and 'output limit' in response['reason'],response
+    artifact=Path(directory)/'network-denied.wasm'
+    types=b'\x02\x60\x03\x7f\x7f\x7f\x01\x7f\x60\x00\x00'
+    imported=b'\x01'+name('wasi_snapshot_preview1')+name('sock_accept')+b'\x00\x00'
+    exports=b'\x02'+name('memory')+b'\x02\x00'+name('_start')+b'\x00\x01'
+    # sock_accept(0,0,0) must return ENOTCAPABLE (76); trap if it succeeds.
+    body=bytes.fromhex('00410041004100100041cc00470440000b0b')
+    binary=b'\0asm\x01\0\0\0'+section(1,types)+section(2,imported)+section(3,b'\x01\x01')+section(5,b'\x01\x00\x01')+section(7,exports)+section(10,b'\x01'+leb(len(body))+body)
+    artifact.write_bytes(binary)
+    preparation['artifact']=str(artifact);preparation['artifact_sha256']=hashlib.sha256(binary).hexdigest()
+    preparation['workload']['command']={'argv':['test'],'exit_code':0,'stdout_sha256':hashlib.sha256(b'').hexdigest(),'output_limit_bytes':1024}
+    assert request('prepare',prepare=preparation)['status']=='ok'
+    response=request('run',run={'scenario':'steady','samples':1,'operations':1,'warmup':0})
+    assert response['status']=='ok',response
     if description['runtime_version'].startswith('nightly-2026-04-05'):
         artifact=Path(directory)/'modern-tag.wasm';artifact.write_bytes(module(modern_tag=True))
         preparation['artifact']=str(artifact);preparation['artifact_sha256']=hashlib.sha256(artifact.read_bytes()).hexdigest()

@@ -3,21 +3,37 @@
 #include "wavm_readonly.h"
 #include <WAVM/Runtime/Runtime.h>
 #include <WAVM/Runtime/Linker.h>
+#include <WAVM/Runtime/Intrinsics.h>
 #include <WAVM/WASI/WASI.h>
 #include <stdexcept>
 
 namespace wb_wasi {
+using namespace WAVM;
+WAVM_DEFINE_INTRINSIC_MODULE(wasmbench_readonly_wasi)
+WAVM_DEFINE_INTRINSIC_FUNCTION(wasmbench_readonly_wasi,"sock_accept",U32,deny_sock_accept,U32,U32,U32){return 76;}
+class ReadOnlyResolver final: public Runtime::Resolver {
+    Runtime::Resolver& delegate;
+    Runtime::Instance* denied;
+public:
+    ReadOnlyResolver(Runtime::Resolver& original,Runtime::Instance* deniedImports):delegate(original),denied(deniedImports){}
+    bool resolve(const std::string& module,const std::string& name,IR::ExternType type,Runtime::Object*& out) override {
+        if(delegate.resolve(module,name,type,out))return true;
+        if(module!="wasi_snapshot_preview1"||name!="sock_accept")return false;
+        out=Runtime::getInstanceExport(denied,name);return out&&Runtime::isA(out,type);
+    }
+};
 // Public embedding APIs only. This owns the per-instance WASI lifecycle;
 // compilation is supplied separately so timing boundaries can stay distinct.
 class CommandInstance {
     WAVM::Runtime::GCPointer<WAVM::Runtime::Compartment> compartment;
     WAVM::Runtime::GCPointer<WAVM::Runtime::Context> context;
     WAVM::Runtime::GCPointer<WAVM::Runtime::Instance> instance;
+    WAVM::Runtime::GCPointer<WAVM::Runtime::Instance> deniedNetwork;
     std::unique_ptr<ReadOnlyFS> filesystem;
     std::shared_ptr<WAVM::WASI::Process> process;
     std::shared_ptr<StreamBuffer> input,output,error;
     void release(){
-        instance=nullptr;context=nullptr;process.reset();filesystem.reset();
+        instance=nullptr;deniedNetwork=nullptr;context=nullptr;process.reset();filesystem.reset();
         if(compartment)WAVM::Runtime::tryCollectCompartment(std::move(compartment));
     }
     static void checked(const std::function<void()>& thunk){
@@ -41,8 +57,13 @@ public:
         checked([&]{
             process=WAVM::WASI::createProcess(compartment,std::move(args),{},filesystem.get(),
                      new MemoryFD(input,false),new MemoryFD(output,true),new MemoryFD(error,true));
-            auto linked=WAVM::Runtime::linkModule(WAVM::Runtime::getModuleIR(module),WAVM::WASI::getProcessResolver(*process));
-            if(!linked.success)throw std::runtime_error("WASI imports failed to link");
+            deniedNetwork=WAVM::Intrinsics::instantiateModule(compartment,{WAVM_INTRINSIC_MODULE_REF(wasmbench_readonly_wasi)},"wasmbench-readonly-network");
+            ReadOnlyResolver resolver(WAVM::WASI::getProcessResolver(*process),deniedNetwork);
+            auto linked=WAVM::Runtime::linkModule(WAVM::Runtime::getModuleIR(module),resolver);
+            if(!linked.success){
+                std::string missing;for(const auto& imported:linked.missingImports){if(!missing.empty())missing+=", ";missing+=imported.moduleName+"."+imported.exportName;}
+                throw std::runtime_error("WASI imports failed to link: "+missing);
+            }
             instance=WAVM::Runtime::instantiateModule(compartment,module,std::move(linked.resolvedImports),"wasmbench-wasi");
             auto memory=WAVM::Runtime::asMemoryNullable(WAVM::Runtime::getInstanceExport(instance,"memory"));
             if(!memory)throw std::runtime_error("WASI command must export memory");

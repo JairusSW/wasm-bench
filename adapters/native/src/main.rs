@@ -189,7 +189,7 @@ impl Adapter {
                 if cfg!(feature = "wavm") {
                     description["description"]["abis"] = json!(["core", "wasi-command"]);
                     description["description"]["effective_configuration"]["command_policy"] = json!(
-                        "Public WAVM WASI embedding; fresh process and instance per operation; fixture staging excluded; instantiation includes compartment, context, WASI process/resolver and guest instantiation; call includes only _start invocation and exit capture; output verification excluded; bounded stdio; read-only verified fixture directory; engine clocks and random source retained"
+                        "Public WAVM WASI embedding; fresh process and instance per operation; fixture staging excluded; instantiation includes compartment, context, WASI process/resolver and guest instantiation; call includes only _start invocation and exit capture; output verification excluded; bounded stdio; read-only verified fixture directory; networking disabled; missing sock_accept receives ENOTCAPABLE rather than success; engine clocks and random source retained"
                     );
                     description["description"]["capabilities"]["can_run_commands"] = json!(true);
                     for name in ["compile", "instantiate", "first-call"] {

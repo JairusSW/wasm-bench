@@ -1,4 +1,4 @@
-#[cfg(feature = "wavm")]
+#[cfg(any(feature = "wavm", feature = "wasmer_singlepass", feature = "wasmer_llvm"))]
 mod commands;
 #[cfg(feature = "wavm")]
 mod native_object;
@@ -211,6 +211,17 @@ impl Adapter {
                     description["description"]["capabilities"]["can_measure_native_code_size"] =
                         json!(true);
                 }
+                #[cfg(any(feature = "wasmer_singlepass", feature = "wasmer_llvm"))]
+                if embedding::can_run_commands() {
+                    description["description"]["abis"] = json!(["core", "wasi-command"]);
+                    description["description"]["capabilities"]["can_run_commands"] = json!(true);
+                    for name in ["compile", "instantiate", "first-call"] {
+                        description["description"]["capabilities"][format!("can_command_{name}_phases")] = json!(true);
+                    }
+                    description["description"]["effective_configuration"]["command_policy"] = json!(
+                        "Public Wasmer WASI builder; fresh store, environment and instance; one runtime worker; bounded finite stdin and stdout/stderr; read-only verified fixture directory; fixture staging excluded; instance setup included in instantiation; _start and typed exit capture timed; output verification excluded"
+                    );
+                }
                 Ok(description)
             }
             #[cfg(any(feature = "wasmer_singlepass", feature = "wasmer_llvm"))]
@@ -241,8 +252,10 @@ impl Adapter {
                 self.bytes.clear();
                 let p = &req["prepare"];
                 let w = &p["workload"];
-                #[cfg(feature = "wavm")]
+                #[cfg(any(feature = "wavm", feature = "wasmer_singlepass", feature = "wasmer_llvm"))]
                 if w["abi"] == "wasi-command" {
+                    #[cfg(any(feature = "wasmer_singlepass", feature = "wasmer_llvm"))]
+                    ensure!(embedding::can_run_commands(), "unsupported: selected Wasmer SDK has no WASI command binding");
                     commands::validate(w)?;
                     ensure!(
                         ["timing", "memory", "code"].contains(&field(p, "profile")?),
@@ -346,7 +359,7 @@ impl Adapter {
                 Ok(json!({}))
             }
             "run" => {
-                #[cfg(feature = "wavm")]
+                #[cfg(any(feature = "wavm", feature = "wasmer_singlepass", feature = "wasmer_llvm"))]
                 if self
                     .prep
                     .as_ref()

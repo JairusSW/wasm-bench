@@ -76,3 +76,19 @@ Four focused tests passed on macOS arm64: finite stdin and write rejection,
 output bounds and sticky overflow, one runtime worker and null-name rejection,
 and typed exits distinguished from ordinary guest traps. These checks validate
 the bridge; end-to-end command collection requires separate workload evidence.
+
+The native adapter's Wasmer command protocol passed against this SDK on macOS
+arm64, including three measured compile/instantiate/steady samples, one first
+call, memory phase barriers, a typed exit code of 7, exact stdout verification,
+wrong-oracle rejection, bounded-output failure, and native-size inspection.
+The deterministic native-size check still reports 92 and 184 bytes for one and
+two defined functions. Run both adapter checks after installing the SDK:
+
+```sh
+python3 adapters/native/tests/wasmer-wasi-protocol.py /path/to/adapter-native
+python3 adapters/native/tests/wasmer-native-size-protocol.py /path/to/adapter-native
+```
+
+The command collector advertises WASI only for SDK headers built with WASI;
+older SDKs retain their core binding. These focused checks do not replace full
+corpus runs or independent fixture-rights checks.

@@ -24,6 +24,7 @@ struct Engine {
     wasm_engine_t* engine=nullptr;
     ~Engine(){if(engine)wasm_engine_delete(engine);}
 };
+#include "wasmer_wasi.h"
 struct Instance {
     wasm_store_t* store=nullptr;
     wasm_instance_t* instance=nullptr;
@@ -55,6 +56,40 @@ static wasm_trap_t* identity(void*,const wasm_val_vec_t* args,wasm_val_vec_t* re
 using NativeSizeGetter=bool(*)(const wasm_module_t*,size_t*);
 static NativeSizeGetter native_size_getter(){return reinterpret_cast<NativeSizeGetter>(dlsym(RTLD_DEFAULT,"wasmbench_module_native_function_size"));}
 extern "C" {
+bool wb_can_wasi(){
+#ifdef WASMER_WASI_ENABLED
+    return true;
+#else
+    return false;
+#endif
+}
+#ifdef WASMER_WASI_ENABLED
+void* wb_wasi_module_new(const uint8_t* bytes,size_t size){WB_TRY{return new wb_wasmer_wasi::Module(bytes,size);}WB_CATCH(nullptr)}
+void wb_wasi_module_delete(void* module){delete static_cast<wb_wasmer_wasi::Module*>(module);}
+void* wb_wasi_instance_new(void* module,const char* const* argv,size_t argc,const char* root,const uint8_t* input,size_t inputSize,size_t limit){WB_TRY{
+    return wb_wasmer_wasi::Command::create(*static_cast<wb_wasmer_wasi::Module*>(module),argv,argc,root,input,inputSize,limit).release();
+}WB_CATCH(nullptr)}
+void wb_wasi_instance_delete(void* instance){delete static_cast<wb_wasmer_wasi::Command*>(instance);}
+int wb_wasi_run(void* instance,uint32_t* exit){WB_TRY{*exit=static_cast<wb_wasmer_wasi::Command*>(instance)->run();return 0;}WB_CATCH(-1)}
+uint64_t wb_wasi_memory_bytes(void* instance){return static_cast<wb_wasmer_wasi::Command*>(instance)->memoryBytes();}
+const uint8_t* wb_wasi_output(void* instance,bool error,size_t* size){
+    *size=SIZE_MAX;
+    WB_TRY {
+        auto& command=*static_cast<wb_wasmer_wasi::Command*>(instance);
+        auto& bytes=error?command.stderrBytes:command.stdoutBytes;
+        command.capture(error?2:1,bytes);
+        *size=bytes.size();return bytes.data();
+    } WB_CATCH(nullptr)
+}
+#else
+void* wb_wasi_module_new(const uint8_t*,size_t){wb_last_error="unsupported: selected Wasmer SDK has no WASI command binding";return nullptr;}
+void wb_wasi_module_delete(void*){}
+void* wb_wasi_instance_new(void*,const char* const*,size_t,const char*,const uint8_t*,size_t,size_t){wb_last_error="unsupported: selected Wasmer SDK has no WASI command binding";return nullptr;}
+void wb_wasi_instance_delete(void*){}
+int wb_wasi_run(void*,uint32_t*){return -1;}
+uint64_t wb_wasi_memory_bytes(void*){return 0;}
+const uint8_t* wb_wasi_output(void*,bool,size_t* size){*size=0;return nullptr;}
+#endif
 bool wb_can_native_size(){return native_size_getter()!=nullptr;}
 int wb_native_size(void* module,size_t* size){WB_TRY{
     auto getter=native_size_getter();

@@ -46,6 +46,7 @@ fn main() {
         build.define("WAVM_API", Some(""));
     }
     if wasmer {
+        println!("cargo:rerun-if-changed=src/wasmer_wasi.h");
         let receipt = sdk.join("receipt.json");
         println!("cargo:rerun-if-changed={}", receipt.display());
         let metadata = if receipt.exists() {

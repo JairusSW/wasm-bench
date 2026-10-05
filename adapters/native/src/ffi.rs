@@ -173,7 +173,7 @@ pub fn object_code(bytes: &[u8]) -> Result<Vec<u8>> {
     }
 }
 
-#[cfg(feature = "wavm")]
+#[cfg(any(feature = "wavm", feature = "wasmer_singlepass", feature = "wasmer_llvm"))]
 mod wasi {
     use super::*;
     unsafe extern "C" {
@@ -254,20 +254,23 @@ mod wasi {
             }
             Ok(exit)
         }
-        pub fn output(&self, stderr: bool) -> Vec<u8> {
+        pub fn output(&self, stderr: bool) -> Result<Vec<u8>> {
             let mut size = 0;
             unsafe {
                 let ptr = wb_wasi_output(self.0.as_ptr(), stderr, &mut size);
+                if size == usize::MAX { return Err(error()); }
+                ensure!(size <= 64 * 1024 * 1024, "command output byte budget exceeded");
                 if size == 0 {
-                    vec![]
+                    Ok(vec![])
                 } else {
-                    std::slice::from_raw_parts(ptr, size).to_vec()
+                    ensure!(!ptr.is_null(), "command output pointer missing");
+                    Ok(std::slice::from_raw_parts(ptr, size).to_vec())
                 }
             }
         }
     }
 }
-#[cfg(feature = "wavm")]
+#[cfg(any(feature = "wavm", feature = "wasmer_singlepass", feature = "wasmer_llvm"))]
 pub use wasi::WasiModule;
 
 #[cfg(any(feature = "wasmer_singlepass", feature = "wasmer_llvm"))]
@@ -290,4 +293,10 @@ impl Module {
         }
         Ok(size)
     }
+}
+
+#[cfg(any(feature = "wasmer_singlepass", feature = "wasmer_llvm"))]
+pub fn can_run_commands() -> bool {
+    unsafe extern "C" { fn wb_can_wasi() -> bool; }
+    unsafe { wb_can_wasi() }
 }

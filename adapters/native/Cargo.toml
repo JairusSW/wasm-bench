@@ -10,8 +10,8 @@ wavm = ["dep:object", "dep:base64", "dep:tempfile"]
 wamr = []
 wasm3 = []
 wasmedge = []
-wasmer_llvm = []
-wasmer_singlepass = []
+wasmer_llvm = ["dep:base64", "dep:tempfile"]
+wasmer_singlepass = ["dep:base64", "dep:tempfile"]
 
 [dependencies]
 anyhow = "1"

@@ -344,8 +344,8 @@ impl Adapter {
             if phases && scenario == "first-call" {
                 barrier(input, &req["id"], index, stages[1])?;
             }
-            let stdout = instance.output(false);
-            let stderr = instance.output(true);
+            let stdout = instance.output(false)?;
+            let stderr = instance.output(true)?;
             let raw = digest(&stdout);
             let stderr_hash = digest(&stderr);
             let normalizer = string(&command["stdout_normalize"]);
@@ -370,7 +370,7 @@ impl Adapter {
             }
             let mut sample = json!({"index":index,"warmup":index<warmup,"elapsed_ns":u64::try_from(elapsed)?,"operations":1,"sample_type":"individual_operation","verified":true,"command_result":result});
             if prep["profile"] == "memory" {
-                sample["observations"] = json!([{"metric":"guest.memory.logical","definition_version":1,"value":guest_bytes,"unit":"bytes","scope":"guest_linear_memory","phase":format!("{scenario}/command_verified"),"collector":"WAVM Runtime memory API","collector_version":embedding::version(),"quality":"engine_reported","profile":"memory","status":"available","normalization_denominator":"instance"}]);
+                sample["observations"] = json!([{"metric":"guest.memory.logical","definition_version":1,"value":guest_bytes,"unit":"bytes","scope":"guest_linear_memory","phase":format!("{scenario}/command_verified"),"collector":format!("{RUNTIME} embedding memory API"),"collector_version":embedding::version(),"quality":"engine_reported","profile":"memory","status":"available","normalization_denominator":"instance"}]);
             }
             output.push(sample);
         }

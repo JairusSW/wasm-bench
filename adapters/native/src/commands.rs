@@ -356,7 +356,8 @@ impl Adapter {
                         || canonical == string(&command["stdout_sha256"]))
                     && (string(&command["stderr_sha256"]).is_empty()
                         || stderr_hash == string(&command["stderr_sha256"])),
-                "incorrect result: command exit/output oracle mismatch"
+                "incorrect result: command exit/output oracle mismatch (exit={exit}, stdout_sha256={canonical}, stderr_sha256={stderr_hash}, stderr_preview={:?})",
+                String::from_utf8_lossy(&stderr[..stderr.len().min(1024)])
             );
             let mut result = json!({"exit_code":exit,"stdout_sha256":raw,"stderr_sha256":stderr_hash,"stdout_bytes":stdout.len(),"stderr_bytes":stderr.len()});
             if !normalizer.is_empty() {

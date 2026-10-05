@@ -70,5 +70,26 @@ with tempfile.TemporaryDirectory(prefix='wasmbench-wasmer-wasi-') as directory:
             assert request('prepare',prepare=preparation)['status']=='ok'
             response=request('run',run={'scenario':'steady','samples':1,'operations':1,'warmup':0})
             assert response['status']=='error' and 'output budget' in response['reason'],response
+    # Independent fixture-root regression: open a staged file using the broad
+    # read-only rights requested by Go, then copy its exact bytes to stdout.
+    types = b'\x03' + b'\x60\x09' + b'\x7f'*5 + b'\x7e'*2 + b'\x7f'*2 + b'\x01\x7f' + b'\x60\x04' + b'\x7f'*4 + b'\x01\x7f' + b'\x60\x00\x00'
+    imported = b'\x03'
+    for field, type_index in [('path_open',0),('fd_read',1),('fd_write',1)]:
+        imported += name('wasi_snapshot_preview1') + name(field) + b'\x00' + leb(type_index)
+    exports = b'\x02' + name('memory') + b'\x02\x00' + name('_start') + b'\x00\x03'
+    # Trap on any syscall error. Memory: path at 0, iovec at 16, opened fd at 32.
+    body = b'\x00' + bytes.fromhex('41034100410041094100') + b'\x42' + leb(0xff7febe) + b'\x42' + leb(0xfffffff) + bytes.fromhex('4100412010000440000b')
+    body += bytes.fromhex('412028020041104101412810010440000b')
+    body += bytes.fromhex('410141104101412c10020440000b0b')
+    payload = b'input.txt' + b'\0'*7 + bytes.fromhex('4000000002000000')
+    binary = b'\0asm\x01\0\0\0' + section(1,types) + section(2,imported) + section(3,b'\x01\x02') + section(5,b'\x01\x00\x01') + section(7,exports) + section(10,b'\x01'+leb(len(body))+body) + section(11,b'\x01\x00\x41\x00\x0b'+leb(len(payload))+payload)
+    artifact = Path(directory)/'fixture-root.wasm';artifact.write_bytes(binary)
+    workload = {'abi':'wasi-command','host_profile':'wasi-preview1-readonly-v1','reset':'fresh_instance_per_sample','export':'_start','args':[],'oracle':{'kind':'exact_command','expected':[]},'command':{'argv':['fixture-root'],'files':{'input.txt':{'data':'b2s=','sha256':hashlib.sha256(b'ok').hexdigest(),'size':2}},'exit_code':0,'stdout_sha256':hashlib.sha256(b'ok').hexdigest(),'output_limit_bytes':1024}}
+    preparation = {'profile':'timing','artifact':str(artifact),'artifact_sha256':hashlib.sha256(binary).hexdigest(),'workload':workload}
+    response=request('prepare',prepare=preparation);assert response['status']=='ok',response
+    for scenario in ['compile','instantiate','first-call','steady']:
+        response = request('run',run={'scenario':scenario,'samples':1,'operations':1,'warmup':0})
+        assert response['status']=='ok',response
+        assert response['samples'][0]['command_result']['stdout_sha256']==hashlib.sha256(b'ok').hexdigest(),response
     request('close');process.wait(timeout=5);assert process.returncode==0
 print('Wasmer WASI protocol passed: timing, memory barriers, native size, exit/output oracles, bounded output')

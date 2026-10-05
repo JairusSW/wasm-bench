@@ -46,3 +46,33 @@ Singlepass policy. Compilation, instantiation and steady execution each contain
 three measured samples; first call, memory and native size contain one. The
 Linux code pass uses the same CPU affinity as its matched timing and memory
 passes. WASI command collection through Wasmer remains a separate binding task.
+
+## Wasmer 7.5 WASI stream bridge
+
+`wasmer-bounded-streams.rs` adds adapter-only exports to the C API WASI module.
+It uses the public WASI builder and virtual-file interfaces. It does not change
+engine or compiler code. The bridge provides finite stdin, bounded stdout and
+stderr with sticky overflow detection, read-only preopens, typed `proc_exit`
+detection, guarded instance initialization, and a runtime with one worker.
+
+Use the full-source release archive for **v7.5.0**, source commit
+`82ff099e082da586b38af79986abbb8b677f8baf`. The verified archive SHA-256 is
+`5504da6c260ab320e768376bf8eea3c409d53e28da035c6281360067a721a672`.
+Apply `wasmer-native-size.patch`, copy the stream bridge into
+`lib/c-api/src/wasm_c_api/wasi/wasmbench_streams.rs`, and add
+`mod wasmbench_streams;` to that directory's `mod.rs`. Build with the explicit
+`sys,singlepass,compiler,wasi` features and a target, using the shared SDK cache.
+
+Run the focused bridge tests before installing the SDK:
+
+```sh
+CARGO_BUILD_JOBS=1 cargo test --manifest-path source/lib/c-api/Cargo.toml \
+  --release --locked --no-default-features \
+  --features sys,singlepass,compiler,wasi --target aarch64-apple-darwin \
+  --target-dir target --lib wasmbench_streams
+```
+
+Four focused tests passed on macOS arm64: finite stdin and write rejection,
+output bounds and sticky overflow, one runtime worker and null-name rejection,
+and typed exits distinguished from ordinary guest traps. These checks validate
+the bridge; end-to-end command collection requires separate workload evidence.

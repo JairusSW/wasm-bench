@@ -1,5 +1,9 @@
 import { spawn } from 'node:child_process';
 
+// Large modules can spend minutes printing complete disassembly on one pinned
+// core. This bound is independent of the controller's per-trial timeout.
+const nativeDiagnosticTimeoutMs = 30 * 60 * 1000;
+
 export function definedFunctionCount(bytes) {
   if(bytes.length<8 || bytes.subarray(0,8).toString('hex')!=='0061736d01000000')throw Error('Core module required');
   let position=8,functions=0,bodies=0;
@@ -73,7 +77,7 @@ export async function inspectNativeSize(artifact, bytes, moduleSha256, mode) {
   const parser=nativeSizeStream(definedFunctionCount(bytes));
   const result=await new Promise(resolve=>{
     const child=spawn(process.execPath,['--no-liftoff','--no-wasm-tier-up','--no-wasm-lazy-compilation','--no-wasm-native-module-cache','--print-wasm-code','-e',program,artifact,moduleSha256],{stdio:['ignore','pipe','ignore'],env:{...process.env,NODE_OPTIONS:''}});
-    const timeout=setTimeout(()=>child.kill('SIGKILL'),240000);
+    const timeout=setTimeout(()=>child.kill('SIGKILL'),nativeDiagnosticTimeoutMs);
     let failure=null;
     child.stdout.setEncoding('utf8');child.stdout.on('data',chunk=>parser.write(chunk));
     child.on('error',error=>{failure=error;});

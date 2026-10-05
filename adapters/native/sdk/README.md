@@ -92,3 +92,11 @@ python3 adapters/native/tests/wasmer-native-size-protocol.py /path/to/adapter-na
 The command collector advertises WASI only for SDK headers built with WASI;
 older SDKs retain their core binding. These focused checks do not replace full
 corpus runs or independent fixture-rights checks.
+
+The fixture setup hook normalizes the builder's empty root alias to `/`, which
+is the key used by Wasmer's virtual-root path resolver. This changes fixture
+configuration before execution, preserves the read-only preopen, and does not
+change engine/compiler code. The real `age-keygen-public` workload passes its
+exact exit/output oracle with this setup; all 17 admitted WASI corpus workloads
+passed fresh preflight. Four WASI workloads remain outside the selected
+Singlepass feature policy (three SIMD payloads and one exception payload).

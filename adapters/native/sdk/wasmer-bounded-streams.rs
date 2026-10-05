@@ -139,7 +139,22 @@ pub unsafe extern "C" fn wasmbench_wasi_config_new(
             .build().ok()?;
         let builder = {
             let _guard = runtime.enter();
-            wasmer_wasix::WasiEnv::builder(name).fs(wasmer_wasix::default_fs_backing())
+            wasmer_wasix::WasiEnv::builder(name)
+                .fs(wasmer_wasix::default_fs_backing())
+                .setup_fs(Box::new(|_, fs| {
+                    // The preopen builder trims '/', but the root resolver
+                    // follows the '/' key. Normalize our single fixture mount.
+                    let mut root = fs.root_inode.write();
+                    let wasmer_wasix::fs::Kind::Root { entries } = &mut *root else {
+                        return Err("WASI fixture root is not a directory root".into());
+                    };
+                    if entries.contains_key("/") {
+                        return Err("WASI fixture root alias already exists".into());
+                    }
+                    let fixture = entries.remove("").ok_or("WASI fixture root alias missing")?;
+                    entries.insert("/".into(), fixture);
+                    Ok(())
+                }))
         };
         Some(Box::new(wasi_config_t {
             inherit_stdout: true,

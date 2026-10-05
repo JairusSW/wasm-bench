@@ -1041,6 +1041,17 @@ func run(ctx context.Context, args []string) error {
 			return output(trials)
 		}
 		return output(b)
+	case "export-site":
+		f := flags("export-site")
+		report := f.String("report", "", "verified sealed measurement report")
+		out := f.String("out", "", "new bounded site-v2 export directory")
+		if err := f.Parse(args[1:]); err != nil {
+			return err
+		}
+		if *report == "" || *out == "" || f.NArg() != 0 {
+			return fmt.Errorf("export-site requires --report and --out")
+		}
+		return publish.ExportSite(*report, *out)
 	case "verify-report":
 		f := flags("verify-report")
 		dir := f.String("dir", "", "sealed static report directory")
@@ -1362,6 +1373,7 @@ func usage() {
   verify --run runs/ID            Verify immutable evidence checksums
   inspect --run runs/ID --workload algorithms/sum
   export-code --run runs/CODE --out reports/native-code
+  export-site --report reports/RUN --out exports/site-v2
   disassemble-code --run runs/CODE --out reports/disassembly --llvm-objcopy PATH --llvm-objdump PATH
   verify-code --dir reports/native-code
   compare-code --baseline-report reports/BASE --candidate-report reports/CANDIDATE --baseline-runtime wasmtime --candidate-runtime wasmtime-winch --out reports/code-comparison

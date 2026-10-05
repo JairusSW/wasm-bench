@@ -144,6 +144,19 @@ pub unsafe extern "C" fn wasmbench_wasi_config_new(
                 .setup_fs(Box::new(|_, fs| {
                     // The preopen builder trims '/', but the root resolver
                     // follows the '/' key. Normalize our single fixture mount.
+                    // The SDK virtual root initially delegates all rights.
+                    // Limit it to the capabilities of our read-only preopen.
+                    // Follow the SDK lock order: descriptor map before inode.
+                    let preopens = fs.preopen_fds.read().map_err(|_| "WASI preopen lock poisoned")?;
+                    let fixture_fds: Vec<_> = preopens.iter().copied().filter(|fd| *fd != 3).collect();
+                    if fixture_fds.len() != 1 { return Err("WASI fixture requires exactly one preopen".into()); }
+                    let mut descriptors = fs.fd_map.write().map_err(|_| "WASI descriptor lock poisoned")?;
+                    let fixture = descriptors.get(fixture_fds[0]).ok_or("WASI fixture descriptor missing")?;
+                    let rights = fixture.inner.rights;
+                    let inheriting = fixture.inner.rights_inheriting;
+                    let virtual_root = descriptors.get_mut(3).ok_or("WASI virtual root descriptor missing")?;
+                    virtual_root.rights &= rights;
+                    virtual_root.rights_inheriting &= inheriting;
                     let mut root = fs.root_inode.write();
                     let wasmer_wasix::fs::Kind::Root { entries } = &mut *root else {
                         return Err("WASI fixture root is not a directory root".into());

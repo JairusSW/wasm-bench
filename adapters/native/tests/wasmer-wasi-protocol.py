@@ -91,5 +91,18 @@ with tempfile.TemporaryDirectory(prefix='wasmbench-wasmer-wasi-') as directory:
         response = request('run',run={'scenario':scenario,'samples':1,'operations':1,'warmup':0})
         assert response['status']=='ok',response
         assert response['samples'][0]['command_result']['stdout_sha256']==hashlib.sha256(b'ok').hexdigest(),response
+    # A broad open must not grant fd_write. Trap if the write succeeds, then
+    # read back the same descriptor to prove the fixture bytes stayed intact.
+    read_call = bytes.fromhex('41202802004110410141281001')
+    deny_write = bytes.fromhex('412028020041104101412c1002450440000b')
+    readonly_body = body.replace(read_call,deny_write+read_call,1)
+    assert readonly_body != body
+    binary = b'\0asm\x01\0\0\0' + section(1,types) + section(2,imported) + section(3,b'\x01\x02') + section(5,b'\x01\x00\x01') + section(7,exports) + section(10,b'\x01'+leb(len(readonly_body))+readonly_body) + section(11,b'\x01\x00\x41\x00\x0b'+leb(len(payload))+payload)
+    artifact.write_bytes(binary)
+    preparation['artifact_sha256']=hashlib.sha256(binary).hexdigest()
+    response=request('prepare',prepare=preparation);assert response['status']=='ok',response
+    response=request('run',run={'scenario':'first-call','samples':1,'operations':1,'warmup':0})
+    assert response['status']=='ok',response
+    assert response['samples'][0]['command_result']['stdout_sha256']==hashlib.sha256(b'ok').hexdigest(),response
     request('close');process.wait(timeout=5);assert process.returncode==0
 print('Wasmer WASI protocol passed: timing, memory barriers, native size, exit/output oracles, bounded output')

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 
 	"github.com/wasmbench/wasmbench/experiment"
@@ -36,6 +37,34 @@ type SiteRecord struct {
 	Kind string          `json:"kind"`
 	ID   string          `json:"id"`
 	Data json.RawMessage `json:"data"`
+}
+
+// Exact executable identity is separate from the runner that collected the data.
+// Build settings are restricted to provenance fields, excluding local build paths.
+func siteExporterIdentity() (map[string]any, error) {
+	executable, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	digest, err := experiment.DigestFile(executable)
+	if err != nil {
+		return nil, err
+	}
+	identity := map[string]any{"format": SiteExportVersion, "binarySha256": digest}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		identity["goVersion"] = info.GoVersion
+		identity["module"] = info.Main.Path
+		identity["moduleVersion"] = info.Main.Version
+		settings := map[string]string{}
+		for _, setting := range info.Settings {
+			switch setting.Key {
+			case "GOOS", "GOARCH", "vcs", "vcs.revision", "vcs.time", "vcs.modified":
+				settings[setting.Key] = setting.Value
+			}
+		}
+		identity["build"] = settings
+	}
+	return identity, nil
 }
 
 func siteHash(b []byte) string       { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
@@ -101,6 +130,10 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 		}
 	}()
 	if err = os.Mkdir(filepath.Join(out, "objects"), 0755); err != nil {
+		return err
+	}
+	exporter, err := siteExporterIdentity()
+	if err != nil {
 		return err
 	}
 	m := SiteManifest{Schema: 2, Format: SiteExportVersion, SourceReportSHA256: siteHash(data), SourceSealSHA256: siteHash(seal), Exporter: SiteExportVersion, Verification: "source-recomputed", Objects: []SiteObject{}}
@@ -204,9 +237,7 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 			versions[k] = v
 		}
 	}
-	if err = record("report", m.ReportID, map[string]any{"runId": d.Bundle.Manifest.ID, "created": d.Bundle.Manifest.Created, "sourceReportSha256": m.SourceReportSHA256, "sourceSealSha256": m.SourceSealSHA256, "runnerSha256": d.Bundle.Manifest.Lock.RunnerSHA256, "versions": versions, "headlineLatencyPolicy": d.LatencyPolicy, "memorySource": d.MemorySource, "codeSource": d.CodeSource, "verification": m.Verification}); err != nil {
-		return err
-	}
+
 	// Launch/block evidence lives in independently readable objects. Split arrays
 	// without turning samples into new independent launches.
 	chunks := func(v any) ([]string, error) {
@@ -253,7 +284,13 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 	}
 	evidence := map[string][]string{}
 	trialEvidence := map[string]string{}
+	passContexts := []string{}
 	for _, bundle := range append([]experiment.Bundle{d.Bundle}, extra...) {
+		contextID, e := object("evidence", map[string]any{"kind": "pass-context", "manifest": bundle.Manifest, "admission": bundle.Admission})
+		if e != nil {
+			return e
+		}
+		passContexts = append(passContexts, contextID)
 		for _, t := range bundle.Trials {
 			samples, e := chunks(t.Samples)
 			if e != nil {
@@ -263,7 +300,34 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 			if e != nil {
 				return e
 			}
-			id, e := object("evidence", map[string]any{"reportId": m.ReportID, "passId": bundle.Manifest.ID, "trialId": t.ID, "block": t.Block, "profile": t.Profile, "scenario": t.Scenario, "status": t.Status, "reason": t.Reason, "samples": samples, "observations": observations})
+			adapterSamples, e := chunks(t.AdapterSamples)
+			if e != nil {
+				return e
+			}
+			phaseEvents, e := chunks(t.PhaseEvents)
+			if e != nil {
+				return e
+			}
+			raw, e := siteJSON(t)
+			if e != nil {
+				return e
+			}
+			var details map[string]json.RawMessage
+			if e = json.Unmarshal(raw, &details); e != nil {
+				return e
+			}
+			// Native image content needs its own binary transport; retain the measured
+			// descriptor separately rather than copying base64 into JSON evidence.
+			for _, field := range []string{"samples", "observations", "adapter_samples", "phase_events", "code_image"} {
+				delete(details, field)
+			}
+			detailID, e := object("evidence", map[string]any{"kind": "trial-details", "data": details})
+			if e != nil {
+				return e
+			}
+			references := append([]string{contextID, detailID}, adapterSamples...)
+			references = append(references, phaseEvents...)
+			id, e := object("evidence", map[string]any{"reportId": m.ReportID, "passId": bundle.Manifest.ID, "trialId": t.ID, "block": t.Block, "profile": t.Profile, "scenario": t.Scenario, "status": t.Status, "reason": t.Reason, "samples": samples, "observations": observations, "passContext": contextID, "details": detailID, "adapterSamples": adapterSamples, "phaseEvents": phaseEvents, "references": references})
 			if e != nil {
 				return e
 			}
@@ -271,6 +335,9 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 			evidence[key] = append(evidence[key], id)
 			trialEvidence[bundle.Manifest.ID+"\x00"+t.ID] = id
 		}
+	}
+	if err = record("report", m.ReportID, map[string]any{"runId": d.Bundle.Manifest.ID, "created": d.Bundle.Manifest.Created, "sourceReportSha256": m.SourceReportSHA256, "sourceSealSha256": m.SourceSealSHA256, "runnerSha256": d.Bundle.Manifest.Lock.RunnerSHA256, "exporterIdentity": exporter, "passContexts": passContexts, "versions": versions, "headlineLatencyPolicy": d.LatencyPolicy, "memorySource": d.MemorySource, "codeSource": d.CodeSource, "verification": m.Verification}); err != nil {
+		return err
 	}
 	addResult := func(runtime, workload, scenario, profile, metric, statistic string, summary any, refs []string) error {
 		if configs[runtime] == "" || contracts[workload] == "" {
@@ -312,9 +379,19 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 		if e = json.Unmarshal(b, &compact); e != nil {
 			return e
 		}
-		delete(compact, "launch_medians")
-		delete(compact, "warmup_diagnostics")
-		refs := evidence[s.Runtime+"\x00"+s.Workload+"\x00"+s.Scenario+"\x00"+s.Profile]
+		diagnostics := map[string]json.RawMessage{}
+		for _, field := range []string{"launch_medians", "warmup_diagnostics"} {
+			if value, ok := compact[field]; ok {
+				diagnostics[field] = value
+			}
+			delete(compact, field)
+		}
+		refs := append([]string{}, evidence[s.Runtime+"\x00"+s.Workload+"\x00"+s.Scenario+"\x00"+s.Profile]...)
+		diagnosticID, e := object("evidence", map[string]any{"kind": "summary-diagnostics", "reportId": m.ReportID, "runtime": s.Runtime, "workload": s.Workload, "scenario": s.Scenario, "profile": s.Profile, "data": diagnostics})
+		if e != nil {
+			return e
+		}
+		refs = append(refs, diagnosticID)
 		// Preserve the producer's interval and unavailable reason byte-for-value.
 		if err = addResult(s.Runtime, s.Workload, s.Scenario, s.Profile, "time.wall", "median_ns_per_operation", compact, refs); err != nil {
 			return err
@@ -397,7 +474,13 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 				size = *c.ImageBytes
 			}
 			summary := map[string]any{"status": "available", "size_bytes": size, "size_note": c.SizeNote, "artifactId": id, "source_run": d.CodeSource, "trial_id": c.Trial}
-			if err = addResult(c.Runtime, c.Workload, "compile", "code", metric, "size_bytes", summary, nil); err != nil {
+			refs := []string{}
+			if d.CodeSource != nil {
+				if trial := trialEvidence[d.CodeSource.ID+"\x00"+c.Trial]; trial != "" {
+					refs = append(refs, trial)
+				}
+			}
+			if err = addResult(c.Runtime, c.Workload, "compile", "code", metric, "size_bytes", summary, refs); err != nil {
 				return err
 			}
 		}

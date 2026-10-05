@@ -194,9 +194,10 @@ func TestSiteExportSeparateMemoryAndExactSize(t *testing.T) {
 	size := uint64(1<<53 + 1)
 	d.CodeRecords[0].SizeBytes = &size
 	bundle := experiment.Bundle{Manifest: experiment.Manifest{ID: "memory-pass"}, Trials: []experiment.Trial{{ID: "memory-0", Runtime: "engine", Workload: "fixture/a", Profile: "memory", Scenario: "steady"}}}
+	codeBundle := experiment.Bundle{Manifest: experiment.Manifest{ID: "code-pass"}, Trials: []experiment.Trial{{ID: "code-0", Runtime: "engine", Workload: "fixture/a", Profile: "code", Scenario: "compile"}}}
 	data, _ := json.Marshal(d)
 	out := filepath.Join(t.TempDir(), "site")
-	if e := writeSiteDataset(d, data, []byte("synthetic seal"), out, bundle); e != nil {
+	if e := writeSiteDataset(d, data, []byte("synthetic seal"), out, bundle, codeBundle); e != nil {
 		t.Fatal(e)
 	}
 	var manifest SiteManifest
@@ -227,6 +228,16 @@ func TestSiteExportSeparateMemoryAndExactSize(t *testing.T) {
 			}
 			if result.Metric == "native.code_size" {
 				sizeFound = true
+				if len(result.Evidence) != 1 {
+					t.Fatal("code pass trial lost")
+				}
+				var trial struct {
+					PassID  string `json:"passId"`
+					TrialID string `json:"trialId"`
+				}
+				if err := experiment.ReadJSON(filepath.Join(out, "objects", result.Evidence[0]), &trial); err != nil || trial.PassID != "code-pass" || trial.TrialID != "code-0" {
+					t.Fatal("code pass source changed", err)
+				}
 				if string(result.Summary["size_bytes"]) != `"9007199254740993"` {
 					t.Fatal("unsafe integer rounded")
 				}
@@ -235,5 +246,94 @@ func TestSiteExportSeparateMemoryAndExactSize(t *testing.T) {
 	}
 	if !memoryFound || !sizeFound {
 		t.Fatal("missing memory/size result")
+	}
+}
+
+func TestSiteExportPassAndTrialEvidence(t *testing.T) {
+	d := siteFixture()
+	d.Bundle.Manifest.Lock.Options.Launches = 1
+	d.Bundle.Manifest.Lock.Options.Samples = 3
+	d.Bundle.Trials[0].AdapterSamples = []protocol.Sample{{}}
+	d.Bundle.Trials[0].PhaseEvents = []experiment.PhaseRecord{{}}
+	d.Bundle.Trials[0].Log = "producer diagnostic"
+	d.Bundle.Trials[0].DurationNS = 42
+	data, _ := json.Marshal(d)
+	out := filepath.Join(t.TempDir(), "site")
+	if err := writeSiteDataset(d, data, []byte("seal"), out); err != nil {
+		t.Fatal(err)
+	}
+	var manifest SiteManifest
+	if err := experiment.ReadJSON(filepath.Join(out, "manifest.json"), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	kinds := map[string]bool{}
+	for _, obj := range manifest.Objects {
+		b, err := os.ReadFile(filepath.Join(out, "objects", obj.SHA256))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if obj.Kind == "record" {
+			var record SiteRecord
+			if err = json.Unmarshal(b, &record); err != nil {
+				t.Fatal(err)
+			}
+			if record.Kind == "report" {
+				var report struct {
+					ExporterIdentity struct {
+						BinarySHA256 string `json:"binarySha256"`
+					} `json:"exporterIdentity"`
+					PassContexts []string `json:"passContexts"`
+				}
+				if err = json.Unmarshal(record.Data, &report); err != nil {
+					t.Fatal(err)
+				}
+				executable, _ := os.Executable()
+				digest, err := experiment.DigestFile(executable)
+				if err != nil || report.ExporterIdentity.BinarySHA256 != digest || len(report.PassContexts) != 1 {
+					t.Fatal("exporter/pass provenance lost")
+				}
+			}
+			continue
+		}
+		var evidence map[string]json.RawMessage
+		if json.Unmarshal(b, &evidence) != nil {
+			continue
+		}
+		var kind string
+		_ = json.Unmarshal(evidence["kind"], &kind)
+		kinds[kind] = true
+		switch kind {
+		case "pass-context":
+			want, _ := json.Marshal(d.Bundle.Manifest)
+			if string(evidence["manifest"]) != string(want) {
+				t.Fatal("pass recipe changed")
+			}
+		case "trial-details":
+			var details map[string]json.RawMessage
+			_ = json.Unmarshal(evidence["data"], &details)
+			if string(details["duration_ns"]) != "42" || string(details["log"]) != `"producer diagnostic"` || details["samples"] != nil {
+				t.Fatal("trial detail lost or eager samples")
+			}
+		case "summary-diagnostics":
+			var details map[string]json.RawMessage
+			_ = json.Unmarshal(evidence["data"], &details)
+			want, _ := json.Marshal(d.Summaries[0].LaunchMedians)
+			if string(details["launch_medians"]) != string(want) {
+				t.Fatal("launch diagnostics changed")
+			}
+		default:
+			if evidence["trialId"] != nil {
+				var refs []string
+				_ = json.Unmarshal(evidence["references"], &refs)
+				if len(refs) != 4 || string(evidence["adapterSamples"]) == "[]" || string(evidence["phaseEvents"]) == "[]" {
+					t.Fatal("trial resource links lost")
+				}
+			}
+		}
+	}
+	for _, kind := range []string{"pass-context", "trial-details", "summary-diagnostics"} {
+		if !kinds[kind] {
+			t.Fatalf("missing %s", kind)
+		}
 	}
 }

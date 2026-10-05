@@ -20,9 +20,17 @@ chunking before this development format can handle it.
 
 Records retain exact locked configurations, tracks, workloads, environment
 facts, the producer metric registry, separate analysis versions, and result
-summaries. Timing launch medians and warmup arrays are excluded from ordinary
-summary records; the original report remains authoritative. Trial/sample and
-observation objects retain pass, trial and block identity. Memory result profile
+summaries. The report records the actual exporting executable SHA-256, available
+module/Go/VCS build fields, and the collecting runner's independent identity.
+Referenced pass contexts retain full manifests, admission facts and locked options.
+Timing launch medians and warmup arrays are separate evidence, excluded from
+ordinary summary records. Trial/sample and observation objects retain pass, trial
+and block identity. Trial envelopes link pass context, diagnostic details, adapter
+samples and phase events through `references`; samples and observations retain
+their legacy links. Scientific payloads are never interpreted as transport links.
+Trial details preserve all remaining fields except `code_image`, whose binary
+transport is pending. Individually oversized diagnostic objects fail explicitly.
+The original report remains authoritative. Memory result profile
 comes from its explicit stage metadata or its recorded report-level source;
 timing-pass RSS is never multiplied by inner sample count.
 

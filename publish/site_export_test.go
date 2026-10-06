@@ -812,3 +812,116 @@ func TestSiteExportPreservesDerivedSourceSections(t *testing.T) {
 		t.Fatal("typed fields or versions duplicated into analysis sections")
 	}
 }
+
+func TestSiteExportLargeTrialEvidenceIndex(t *testing.T) {
+	d := siteFixture()
+	original := d.Bundle.Trials[0]
+	d.Bundle.Trials = nil
+	for i := 0; i < 4500; i++ {
+		trial := original
+		trial.ID = fmt.Sprintf("large-launch-%d", i)
+		if i == 0 {
+			trial.ID = original.ID
+		}
+		trial.Block = i
+		d.Bundle.Trials = append(d.Bundle.Trials, trial)
+	}
+	data, _ := json.Marshal(d)
+	out := filepath.Join(t.TempDir(), "site")
+	if err := writeSiteDataset(d, data, []byte("synthetic large trial evidence seal"), out); err != nil {
+		t.Fatal(err)
+	}
+	var manifest SiteManifest
+	if err := experiment.ReadJSON(filepath.Join(out, "manifest.json"), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	payloads := map[string][]byte{}
+	for _, descriptor := range manifest.InventoryPages {
+		var page siteInventoryPage
+		if err := experiment.ReadJSON(filepath.Join(out, "objects", descriptor.SHA256), &page); err != nil {
+			t.Fatal(err)
+		}
+		for _, object := range page.Objects {
+			payload, err := os.ReadFile(filepath.Join(out, "objects", object.SHA256))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(payload) > SiteChunkBytes || siteHash(payload) != object.SHA256 {
+				t.Fatal("unbounded or corrupt payload")
+			}
+			payloads[object.SHA256] = payload
+		}
+	}
+	checked := false
+	for _, payload := range payloads {
+		var record SiteRecord
+		if json.Unmarshal(payload, &record) != nil || record.Kind != "result" {
+			continue
+		}
+		var result struct {
+			Metric   string
+			Evidence []string
+			Summary  json.RawMessage
+		}
+		if err := json.Unmarshal(record.Data, &result); err != nil {
+			t.Fatal(err)
+		}
+		if result.Metric != "time.wall" {
+			continue
+		}
+		checked = true
+		if len(payload) > 16*1024 || len(result.Evidence) != 1 {
+			t.Fatal("result preloads trial inventory", len(payload), len(result.Evidence))
+		}
+		trials := []string{}
+		var visit func(string)
+		visit = func(id string) {
+			var value struct {
+				Kind       string
+				Schema     int
+				References []string
+				TrialID    string
+			}
+			if err := json.Unmarshal(payloads[id], &value); err != nil {
+				t.Fatal(err)
+			}
+			if value.Kind == "evidence-index" {
+				if value.Schema != 1 || len(value.References) == 0 || len(value.References) > 128 {
+					t.Fatal("invalid index page")
+				}
+				for _, ref := range value.References {
+					visit(ref)
+				}
+			} else if value.TrialID != "" {
+				trials = append(trials, value.TrialID)
+			}
+		}
+		visit(result.Evidence[0])
+		if len(trials) != len(d.Bundle.Trials) {
+			t.Fatal("trial inventory lost", len(trials))
+		}
+		for i, trial := range d.Bundle.Trials {
+			if trials[i] != trial.ID {
+				t.Fatal("trial order changed", i)
+			}
+		}
+		var summary map[string]json.RawMessage
+		_ = json.Unmarshal(result.Summary, &summary)
+		want, _ := json.Marshal(d.Summaries[0])
+		var source map[string]json.RawMessage
+		_ = json.Unmarshal(want, &source)
+		delete(source, "launch_medians")
+		delete(source, "warmup_diagnostics")
+		if !reflect.DeepEqual(summary, source) {
+			t.Fatal("scientific summary drift")
+		}
+	}
+	if !checked {
+		t.Fatal("missing timing result")
+	}
+	if fixture := os.Getenv("WASMFYI_LARGE_TRIAL_FIXTURE_OUT"); fixture != "" {
+		if err := os.CopyFS(fixture, os.DirFS(out)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

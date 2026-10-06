@@ -490,6 +490,10 @@ func writeSiteDatasetFiles(d Dataset, data, seal []byte, out, report string, ext
 		if definitions[metric] == "" {
 			return fmt.Errorf("metric missing from source registry: %s", metric)
 		}
+		refs, err = siteEvidenceRoots(refs, object)
+		if err != nil {
+			return err
+		}
 		value := map[string]any{"reportId": m.ReportID, "environmentId": environment, "configurationId": configs[runtime], "trackId": tracks[runtime], "runtime": runtime, "contractId": contracts[workload], "workload": workload, "scenario": scenario, "profile": profile, "metric": metric, "metricDefinitionId": definitions[metric], "metricDefinitionStatus": definitionStatus, "statistic": statistic, "created": d.Bundle.Manifest.Created, "analysisVersion": d.AnalysisVersion, "summary": summary, "evidence": refs}
 		method, e := siteMethod(append([]experiment.Bundle{d.Bundle}, extra...), pass, runtime, workload, scenario, profile, metric, statistic, trials)
 		if e != nil {
@@ -743,4 +747,28 @@ func writeSiteDatasetFiles(d Dataset, data, seal []byte, out, report string, ext
 		return fmt.Errorf("manifest exceeds ceiling")
 	}
 	return os.WriteFile(filepath.Join(out, "manifest.json"), b, 0644)
+}
+
+// siteEvidenceRoots keeps canonical result records independent of launch count.
+// Index pages preserve the original order and repetitions without copying trial
+// bodies or changing any scientific values. Small legacy lists stay unchanged.
+func siteEvidenceRoots(refs []string, object func(string, any) (string, error)) ([]string, error) {
+	const fanout = 128
+	if len(refs) <= fanout {
+		return refs, nil
+	}
+	for {
+		next := make([]string, 0, (len(refs)+fanout-1)/fanout)
+		for start := 0; start < len(refs); start += fanout {
+			id, err := object("evidence", map[string]any{"kind": "evidence-index", "schema": 1, "references": refs[start:min(start+fanout, len(refs))]})
+			if err != nil {
+				return nil, err
+			}
+			next = append(next, id)
+		}
+		if len(next) == 1 {
+			return next, nil
+		}
+		refs = next
+	}
 }

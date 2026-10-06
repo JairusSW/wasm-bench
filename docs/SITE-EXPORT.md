@@ -181,3 +181,17 @@ seal are considered. Missing memory files stay absent. Export rechecks regular
 file identity, streamed length and seal digest while copying; no archived code
 executes. Reassemble chunks in order and verify the original full digest for
 bulk analysis. Tool/report archives are outside this analytical-file contract.
+
+Trial-evidence lists above 128 references now use ordered `evidence-index`
+pages: `{kind:"evidence-index",schema:1,references:[...]}`. Each page contains
+one to 128 full content hashes; additional levels keep the result's evidence
+inventory at one root. The index preserves order and repeated references and
+contains no trial bodies or new measurements. Small lists retain their exact
+legacy representation. Follow pages through the existing selected-result chunk
+surface; complete import/retention/recovery must include every reachable child.
+
+The 4,500-trial synthetic gate previously failed the canonical-record ceiling.
+It now verifies all trial identities in producer order, unchanged source summary
+fields and bounded objects. Its timing record is 2,504 bytes with one root.
+This establishes transport scale, not scientific qualification of the synthetic
+trials. Other oversized catalog/result fields still fail explicitly.

@@ -27,10 +27,13 @@ individual oversized evidence row or catalog record fails explicitly and leaves
 no complete export directory. Large individual evidence objects need additional
 chunking. Legacy small-manifest encoding is unchanged.
 
-Paged inventories require the consumer's two-stage admission implementation.
-The current website service fails closed on this new manifest field until that
-implementation is available; a producer upgrade alone does not enable large
-completed-job publication.
+Paged inventories require two-stage consumer admission. The website service
+reserves page and payload bytes up front, uploads the page, then attaches it to
+its specific import before granting leaf permissions. The coordinator implements
+this protocol. A consumer must verify all page commitments and reject unresolved
+or repeated payload references before publishing a complete corpus job. Producer
+and consumer support are still development branches; production pins remain
+unchanged.
 
 Records retain exact locked configurations, tracks, workloads, environment
 facts, the producer metric registry, separate analysis versions, and result

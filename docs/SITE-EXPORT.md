@@ -151,3 +151,12 @@ metadata contains references rather than complete analysis arrays. Consumers mus
 include the section roots in import verification, portable recovery and retention.
 Legacy reports without these references remain readable. Standalone analytical
 files and bulk archives are not represented by these JSON sections.
+
+Native metadata also records `functionIndexVersion: producer-order-v1` and
+`functionShards`: ordered shard digests with exact row counts. The original
+`functions`/`references` remain for existing chunk readers. This permits a selected
+function page to skip preceding shards without loading every function. Consumers
+must validate counts against shard rows before publishing. At most 4,096 shards
+and one million attributed functions fit this index contract. Function ordering,
+indices, tier/generation and byte ranges remain producer-owned; no disassembly is
+performed by this transport or by ordinary API reads.

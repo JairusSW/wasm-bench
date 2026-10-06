@@ -312,16 +312,17 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 
 	// Launch/block evidence lives in independently readable objects. Split arrays
 	// without turning samples into new independent launches.
-	chunks := func(v any) ([]string, error) {
+	chunksWithCounts := func(v any) ([]string, []int, error) {
 		b, e := siteJSON(v)
 		if e != nil {
-			return nil, e
+			return nil, nil, e
 		}
 		var rows []json.RawMessage
 		if e = json.Unmarshal(b, &rows); e != nil {
-			return nil, e
+			return nil, nil, e
 		}
 		ids := []string{}
+		counts := []int{}
 		part := []json.RawMessage{}
 		size := 2
 		flush := func() error {
@@ -333,6 +334,7 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 				return e
 			}
 			ids = append(ids, id)
+			counts = append(counts, len(part))
 			part = nil
 			size = 2
 			return nil
@@ -340,28 +342,30 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 		for _, row := range rows {
 			if len(row)+2 > SiteChunkBytes {
 				if e = flush(); e != nil {
-					return nil, e
+					return nil, nil, e
 				}
 				id, e := object("evidence", []json.RawMessage{row})
 				if e != nil {
-					return nil, e
+					return nil, nil, e
 				}
 				ids = append(ids, id)
+				counts = append(counts, 1)
 				continue
 			}
 			if size+len(row)+1 > SiteChunkBytes {
 				if e = flush(); e != nil {
-					return nil, e
+					return nil, nil, e
 				}
 			}
 			part = append(part, row)
 			size += len(row) + 1
 		}
 		if e = flush(); e != nil {
-			return nil, e
+			return nil, nil, e
 		}
-		return ids, nil
+		return ids, counts, nil
 	}
+	chunks := func(v any) ([]string, error) { ids, _, err := chunksWithCounts(v); return ids, err }
 	evidence := map[string][]string{}
 	trialEvidence := map[string]string{}
 	passContexts := []string{}
@@ -608,12 +612,22 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 					return fmt.Errorf("native image size differs from report")
 				}
 				image := *exported.Image
-				functions, e := chunks(image.Functions)
+				if len(image.Functions) > 1000000 {
+					return fmt.Errorf("native function count exceeds ceiling")
+				}
+				functions, counts, e := chunksWithCounts(image.Functions)
 				if e != nil {
 					return e
 				}
 				image.Functions = nil
-				metadata, e := object("evidence", map[string]any{"kind": "native-image-metadata", "reportId": m.ReportID, "passId": d.CodeSource.ID, "trialId": trial.ID, "image": image, "functions": functions, "references": functions})
+				functionShards := []map[string]any{}
+				if len(functions) > 4096 {
+					return fmt.Errorf("native function shard count exceeds ceiling")
+				}
+				for i, ref := range functions {
+					functionShards = append(functionShards, map[string]any{"sha256": ref, "count": counts[i]})
+				}
+				metadata, e := object("evidence", map[string]any{"kind": "native-image-metadata", "reportId": m.ReportID, "passId": d.CodeSource.ID, "trialId": trial.ID, "image": image, "functions": functions, "references": functions, "functionIndexVersion": "producer-order-v1", "functionShards": functionShards})
 				if e != nil {
 					return e
 				}

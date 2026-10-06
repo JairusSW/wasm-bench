@@ -587,8 +587,13 @@ func TestSiteExportNativeBinaryAndFunctionResources(t *testing.T) {
 			t.Fatal("availability or provenance changed")
 		}
 		var metadata struct {
-			Image     protocol.CodeImage
-			Functions []string
+			Image                protocol.CodeImage
+			Functions            []string
+			FunctionIndexVersion string
+			FunctionShards       []struct {
+				SHA256 string
+				Count  int
+			}
 		}
 		if err = experiment.ReadJSON(filepath.Join(out, "objects", descriptor.Inspection.Metadata), &metadata); err != nil {
 			t.Fatal(err)
@@ -602,6 +607,9 @@ func TestSiteExportNativeBinaryAndFunctionResources(t *testing.T) {
 		}
 		if !reflect.DeepEqual(functions, bundle.Trials[0].CodeImage.Functions) {
 			t.Fatal("function attribution changed")
+		}
+		if metadata.FunctionIndexVersion != "producer-order-v1" || len(metadata.FunctionShards) != 1 || metadata.FunctionShards[0].SHA256 != metadata.Functions[0] || metadata.FunctionShards[0].Count != len(functions) {
+			t.Fatal("function counts lost attribution")
 		}
 	}
 	if !foundBinary || !foundDescriptor {

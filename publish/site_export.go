@@ -645,7 +645,13 @@ func writeSiteDatasetFiles(d Dataset, data, seal []byte, out, report string, ext
 				if recorded, ok := disassemblies[trial.ID]; ok && recorded.Disassembly != nil {
 					derivative = &recorded
 				}
-				functions, counts, e := siteNativeFunctions(image, derivative, disassemblyTools, disassemblySourceVersion, object)
+				var functions []string
+				var counts []int
+				if derivative == nil {
+					functions, counts, e = chunksWithCounts(image.Functions)
+				} else {
+					functions, counts, e = siteNativeFunctions(image, derivative, disassemblyTools, disassemblySourceVersion, object)
+				}
 				if e != nil {
 					return e
 				}

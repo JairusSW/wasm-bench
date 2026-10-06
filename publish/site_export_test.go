@@ -696,3 +696,110 @@ func TestSiteExportEmptyNativeOriginal(t *testing.T) {
 		t.Fatal("empty original became unavailable content")
 	}
 }
+
+func TestSiteExportPreservesDerivedSourceSections(t *testing.T) {
+	d := siteFixture()
+	raw, _ := json.Marshal(d)
+	var source map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &source); err != nil {
+		t.Fatal(err)
+	}
+	// Future derived fields and unsafe JSON integers must survive as exact source
+	// values, independently of the typed summary projection.
+	source["future_derived"] = json.RawMessage(`{"counter":9007199254740993,"status":"unavailable","reason":"source reason","launches":[1,2]}`)
+	large, _ := json.Marshal(map[string]any{"diagnostic": strings.Repeat("λ diagnostic ", 30000), "coverage": "partial"})
+	source["future_large"] = large
+	source["future_analysis_version"] = json.RawMessage(`"method-7"`)
+	data, _ := json.Marshal(source)
+	out := filepath.Join(t.TempDir(), "site")
+	if err := writeSiteDataset(d, data, []byte("seal"), out); err != nil {
+		t.Fatal(err)
+	}
+	var manifest SiteManifest
+	if err := experiment.ReadJSON(filepath.Join(out, "manifest.json"), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	var sections map[string]string
+	var versions map[string]json.RawMessage
+	for _, o := range manifest.Objects {
+		if o.Bytes > SiteChunkBytes {
+			t.Fatal("unbounded analysis object")
+		}
+		if o.Kind != "record" {
+			continue
+		}
+		var r SiteRecord
+		if err := experiment.ReadJSON(filepath.Join(out, "objects", o.SHA256), &r); err != nil {
+			t.Fatal(err)
+		}
+		if r.Kind == "report" {
+			var report struct {
+				SourceSchema           int
+				AnalysisSectionVersion string
+				AnalysisSections       map[string]string
+				Versions               map[string]json.RawMessage
+			}
+			if err := json.Unmarshal(r.Data, &report); err != nil {
+				t.Fatal(err)
+			}
+			if report.AnalysisSectionVersion != "source-fields-v1" || report.SourceSchema != d.Schema {
+				t.Fatal("missing section format")
+			}
+			sections, versions = report.AnalysisSections, report.Versions
+		}
+	}
+	read := func(id string) []byte {
+		b, err := os.ReadFile(filepath.Join(out, "objects", id))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if siteHash(b) != id {
+			t.Fatal("digest mismatch")
+		}
+		return b
+	}
+	for _, field := range []string{"future_derived", "future_large", "throughput", "scaling", "memory_timelines", "counter_display", "cpu_stacks"} {
+		id := sections[field]
+		if id == "" {
+			t.Fatal("source section lost", field)
+		}
+		b := read(id)
+		var resource struct {
+			Kind       string
+			Bytes      int
+			SHA256     string
+			References []string
+		}
+		if err := json.Unmarshal(b, &resource); err != nil {
+			t.Fatal(err)
+		}
+		if resource.Kind == "json-resource" {
+			assembled := []byte{}
+			for _, ref := range resource.References {
+				var fragment struct{ Text string }
+				if err := json.Unmarshal(read(ref), &fragment); err != nil {
+					t.Fatal(err)
+				}
+				assembled = append(assembled, fragment.Text...)
+			}
+			if len(assembled) != resource.Bytes || siteHash(assembled) != resource.SHA256 {
+				t.Fatal("section resource integrity")
+			}
+			b = assembled
+		}
+		var section struct {
+			Kind, ReportID, Field string
+			Schema                int
+			Data                  json.RawMessage
+		}
+		if err := json.Unmarshal(b, &section); err != nil {
+			t.Fatal(err)
+		}
+		if section.Kind != "report-analysis" || section.Schema != 1 || section.ReportID != manifest.ReportID || section.Field != field || !bytes.Equal(section.Data, source[field]) {
+			t.Fatal("source section changed", field)
+		}
+	}
+	if sections["bundle"] != "" || sections["summaries"] != "" || sections["future_analysis_version"] != "" || string(versions["future_analysis_version"]) != `"method-7"` {
+		t.Fatal("typed fields or versions duplicated into analysis sections")
+	}
+}

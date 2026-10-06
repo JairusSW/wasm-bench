@@ -10,7 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/wasmbench/wasmbench/experiment"
@@ -414,7 +416,42 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 			trialEvidence[bundle.Manifest.ID+"\x00"+t.ID] = id
 		}
 	}
-	if err = record("report", m.ReportID, map[string]any{"runId": d.Bundle.Manifest.ID, "created": d.Bundle.Manifest.Created, "sourceReportSha256": m.SourceReportSHA256, "sourceSealSha256": m.SourceSealSHA256, "runnerSha256": d.Bundle.Manifest.Lock.RunnerSHA256, "passContexts": passContexts, "versions": versions, "headlineLatencyPolicy": d.LatencyPolicy, "memorySource": d.MemorySource, "codeSource": d.CodeSource, "verification": m.Verification}); err != nil {
+	// Preserve derived producer fields as referenced evidence, without calculating
+	// new values or placing whole arrays into the report descriptor. Core fields
+	// already have typed catalog/result/pass transports; analysis versions remain
+	// in the descriptor. Unknown future derived fields are retained as well.
+	analysisSections := map[string]string{}
+	fields := []string{}
+	for field := range source {
+		switch field {
+		case "bundle", "summaries", "memory_stages", "code_records", "metrics", "schema":
+			continue
+		}
+		if strings.HasSuffix(field, "_version") {
+			continue
+		}
+		fields = append(fields, field)
+	}
+	sort.Strings(fields)
+	if len(fields) > 64 {
+		return fmt.Errorf("too many report analysis sections")
+	}
+	for _, field := range fields {
+		if len(field) > 128 {
+			return fmt.Errorf("source analysis field name exceeds ceiling")
+		}
+		for _, c := range field {
+			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_') {
+				return fmt.Errorf("invalid source analysis field name")
+			}
+		}
+		id, e := object("evidence", map[string]any{"kind": "report-analysis", "schema": 1, "reportId": m.ReportID, "field": field, "data": source[field]})
+		if e != nil {
+			return e
+		}
+		analysisSections[field] = id
+	}
+	if err = record("report", m.ReportID, map[string]any{"sourceSchema": d.Schema, "runId": d.Bundle.Manifest.ID, "created": d.Bundle.Manifest.Created, "sourceReportSha256": m.SourceReportSHA256, "sourceSealSha256": m.SourceSealSHA256, "runnerSha256": d.Bundle.Manifest.Lock.RunnerSHA256, "passContexts": passContexts, "analysisSectionVersion": "source-fields-v1", "analysisSections": analysisSections, "versions": versions, "headlineLatencyPolicy": d.LatencyPolicy, "memorySource": d.MemorySource, "codeSource": d.CodeSource, "verification": m.Verification}); err != nil {
 		return err
 	}
 	addResult := func(runtime, workload, scenario, profile, metric, statistic, pass string, trials map[string]bool, summary any, refs []string) error {

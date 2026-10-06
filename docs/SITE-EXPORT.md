@@ -109,8 +109,8 @@ input rejection and failed-output cleanup:
 go test ./publish ./cmd/wasmbench
 ```
 
-This is a development producer contract. Additional analytical evidence exports,
-native inspection, package publication and the consuming frontend migration
+This is a development producer contract. Standalone analytical files, offline
+native derivatives, package publication and the consuming frontend migration
 remain separate follow-up work. Existing report formats and readers are unchanged.
 
 Each result now includes a bounded `measurementMethod` and its full
@@ -136,3 +136,18 @@ These selectors project existing verified evidence without changing source
 statistics or scientific definitions. Website compatibility/cohort policy still
 needs to decide which recorded methods can be compared; matching a digest is not
 a substitute for operator qualification or independent source verification.
+
+Report descriptors also retain `sourceSchema`, independent source analysis
+versions, and `analysisSections` under version `source-fields-v1`. Each of at most
+64 entries names an original derived report JSON field and references a
+`report-analysis` envelope bound to the report and field. Throughput, scaling,
+counter displays, CPU stacks, memory timelines and other derived JSON values are
+copied from the verified source, with no new analysis. Future derived fields are
+retained when their bounded source names fit the transport. Large section bodies
+use the same JSON-resource/fragments contract as detailed trial evidence.
+
+Core typed results, metrics and passes keep their existing transport; report
+metadata contains references rather than complete analysis arrays. Consumers must
+include the section roots in import verification, portable recovery and retention.
+Legacy reports without these references remain readable. Standalone analytical
+files and bulk archives are not represented by these JSON sections.

@@ -146,10 +146,14 @@ func ExportSite(report, out string) error {
 		}
 		bundles = append(bundles, b)
 	}
-	return writeSiteDataset(d, data, seal, out, bundles...)
+	return writeSiteDatasetFiles(d, data, seal, out, report, bundles...)
 }
 
-func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experiment.Bundle) (err error) {
+func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experiment.Bundle) error {
+	return writeSiteDatasetFiles(d, data, seal, out, "", extra...)
+}
+
+func writeSiteDatasetFiles(d Dataset, data, seal []byte, out, report string, extra ...experiment.Bundle) (err error) {
 	if err = os.Mkdir(out, 0755); err != nil {
 		return err
 	}
@@ -454,6 +458,10 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 			return e
 		}
 		analysisSections[field] = id
+	}
+	_, err = siteReportFiles(report, seal, m.ReportID, binary, object)
+	if err != nil {
+		return err
 	}
 	if err = record("report", m.ReportID, map[string]any{"sourceSchema": d.Schema, "runId": d.Bundle.Manifest.ID, "created": d.Bundle.Manifest.Created, "sourceReportSha256": m.SourceReportSHA256, "sourceSealSha256": m.SourceSealSHA256, "runnerSha256": d.Bundle.Manifest.Lock.RunnerSHA256, "passContexts": passContexts, "analysisSectionVersion": "source-fields-v1", "analysisSections": analysisSections, "versions": versions, "headlineLatencyPolicy": d.LatencyPolicy, "memorySource": d.MemorySource, "codeSource": d.CodeSource, "verification": m.Verification}); err != nil {
 		return err

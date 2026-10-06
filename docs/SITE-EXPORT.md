@@ -170,3 +170,14 @@ report-analysis versions and exporter binaries do not define the group. Missing
 source context yields no invented group. Memory uses its contributing trial set;
 timing retains its source outcome population, including failed trials. Statistical
 analysis and cross-report history/uncertainty policy remain consumer concerns.
+
+
+Existing sealed analytical outputs are preserved as `report-file` records (exact
+original Parquet name, report identity, media type, identity encoding, bytes and
+SHA-256) with ordered binary chunk commitments. Files use 1 MiB chunks with a
+1 GiB/1024-chunk ceiling. This reuses existing report-builder exports; it performs
+no new analysis. Only the eight named timing/memory analytical files found in the
+seal are considered. Missing memory files stay absent. Export rechecks regular
+file identity, streamed length and seal digest while copying; no archived code
+executes. Reassemble chunks in order and verify the original full digest for
+bulk analysis. Tool/report archives are outside this analytical-file contract.

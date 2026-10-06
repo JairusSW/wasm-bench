@@ -1,5 +1,17 @@
 # Bounded site export
 
+Feature workloads emit `feature-probe` descriptors under
+`policy=recorded-feature-trials-v1`. They retain raw outcome counts by source pass,
+profile and scenario, exact contract/configuration/environment IDs, and bounded
+trial-evidence references. Cross-pass inclusion reuses the report builder's
+matching policy; same names with different contracts are excluded. Scalar baseline
+workloads emit no probe descriptor. Zero recorded trials remain zero with empty
+evidence. These counts are neither independent-launch counts nor official suite
+conformance, and contain no inferred feature-support or performance verdict.
+Descriptors are at most 10 KiB and carry at most 16 independently readable roots.
+This record kind requires a consumer supporting feature-probe records; old exports
+without the optional records remain readable by the updated consumer.
+
 ```sh
 wasmbench export-site --report reports/COMPLETE --out exports/NEW
 ```

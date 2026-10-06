@@ -455,6 +455,9 @@ func writeSiteDatasetSources(d Dataset, data, seal []byte, out, report, nativeAr
 			trialEvidence[bundle.Manifest.ID+"\x00"+t.ID] = id
 		}
 	}
+	if err = siteFeatureProbes(d, extra, m.ReportID, environment, configs, tracks, contracts, trialEvidence, object, record); err != nil {
+		return err
+	}
 	// Preserve derived producer fields as referenced evidence, without calculating
 	// new values or placing whole arrays into the report descriptor. Core fields
 	// already have typed catalog/result/pass transports; analysis versions remain

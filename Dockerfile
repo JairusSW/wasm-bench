@@ -26,5 +26,7 @@ COPY adapters/v8/profiling.mjs ./adapters/v8/profiling.mjs
 COPY adapters/v8/compiler-mode.mjs ./adapters/v8/compiler-mode.mjs
 COPY adapters/v8/tier-adapter.mjs ./adapters/v8/tier-adapter.mjs
 COPY adapters/v8/tracing.mjs ./adapters/v8/tracing.mjs
+COPY adapters/v8/wasi-readonly.mjs ./adapters/v8/wasi-readonly.mjs
+COPY adapters/v8/native-size.mjs ./adapters/v8/native-size.mjs
 ENTRYPOINT ["./bin/wasmbench"]
 CMD ["doctor"]

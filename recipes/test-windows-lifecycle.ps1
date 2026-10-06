@@ -25,7 +25,7 @@ Push-Location $recipeRoot
 try {
   Invoke-Checked $controller @('doctor') | Out-File (Join-Path $evidence 'doctor.json') -Encoding utf8
   Invoke-Checked $controller @('check','--suite','core','--runtimes','wazero,wazero-interpreter,v8','--out',"$evidence/check")
-  Invoke-Checked $controller @('run','--suite','core','--runtimes','wazero,wazero-interpreter,v8','--scenarios','compile,instantiate,first-call','--profile','timing','--launches','2','--samples','2','--operations','2','--warmup','0','--out',"$evidence/run")
+  Invoke-Checked $controller @('run','--archive-tools=true','--suite','core','--runtimes','wazero,wazero-interpreter,v8','--scenarios','compile,instantiate,first-call','--profile','timing','--launches','2','--samples','2','--operations','2','--warmup','0','--out',"$evidence/run")
   Invoke-Checked $controller @('reproduce',"$evidence/run",'--out',"$evidence/replayed")
   Invoke-Checked $controller @('restore-tools','--run',"$evidence/run",'--out',"$evidence/tools") | Out-File (Join-Path $evidence 'restoration.json') -Encoding utf8
   $restoration = Get-Content -Raw (Join-Path $evidence 'restoration.json') | ConvertFrom-Json

@@ -33,7 +33,13 @@ jobs:
           engines=wasmi
           if [ "$RUNNER_OS" = macOS ]; then engines=wasmi,jsc; fi
           WASMBENCH_EXTRA_TEST_RUNTIMES="$engines" go test ./experiment -run '^TestBuiltExtraAdapter$' -count=1 -json |
+            tee "$RUNNER_TEMP/extra-adapter-events.jsonl" |
             node recipes/verify-go-test-coverage.mjs --package github.com/wasmbench/wasmbench/experiment --require TestBuiltExtraAdapter
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: extra-adapter-events-${{ matrix.os }}
+          path: ${{ runner.temp }}/extra-adapter-events.jsonl
       - run: node --test adapters/js-shell/*.test.mjs
   wago:
     runs-on: ubuntu-latest

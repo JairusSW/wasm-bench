@@ -165,3 +165,12 @@ Project source is licensed under [Apache-2.0](LICENSE). See [NOTICE](NOTICE)
 for attribution. Corpus fixtures and recipes with explicit license declarations
 retain those licenses, including the [MIT corpus license](corpus/LICENSE).
 Third-party runtime dependencies and imported workloads retain their upstream licenses.
+
+`export-site` also emits an explicit `report.tar.gz` file resource containing the
+exact sealed report files and `checksums.json`. The offline derivative uses
+`sealed-files-tar-gzip-v1`: sorted files, fixed tar metadata and gzip level 1.
+Original file bytes are rechecked during packing; links and escaping paths are
+rejected. The source seal digest accompanies bounded 1 MiB content chunks.
+Limits are 100,000 files, 16 MiB seal metadata, 8 GiB raw input and 1 GiB compressed
+output. This preserves existing sealed builder bytes without executing them.
+It does not replace a shared session tool bundle or imply hermetic replay.

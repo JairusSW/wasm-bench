@@ -16,11 +16,20 @@ import (
 	"github.com/wasmbench/wasmbench/protocol"
 )
 
-//go:embed code.html
+//go:embed code.html code_functions.html
 var codeAssets embed.FS
 
 const nativeExportInterpretation = "Raw native images include wrappers and embedded data. Version 2 records retain engine-reported guest function ranges, Wasm indices and fixed backend generation zero; ranges may include constants and padding, not just instructions. Version 1 images have no function attribution. Unattributed text is not automatically trampoline size. These are retained compilation snapshots, not creation/retirement logs. Original relocations and instruction-only sizes remain unavailable. Metadata data fields are omitted here; path identifies exact bytes. The complete source evidence is in raw/. Images are data, not executable files."
 const nativeDisassemblyInterpretation = "Synthetic ELF wrappers preserve the raw mixed native image byte-for-byte at section offset zero. Linear disassembly may decode embedded data as instructions; synthetic binary symbols are not Wasm function boundaries. Version 2 images retain engine-reported function ranges and backend generation zero. Per-function listings restrict decoding to those ranges in the complete text object, preserving image-relative addresses; version 1 images have no function attribution. Range listings may decode function-local constants/padding and do not establish instruction-only sizes. No original object, relocations, tier lifetime events or compiler counters are inferred. Tool executable hashes, versions and argv are recorded; dynamic libraries are not pinned. The complete source evidence is in raw/."
+
+const nativeFunctionDisassemblyInterpretation = nativeDisassemblyInterpretation + " Version 3 collects function ranges only; whole-image linear disassembly is not collected. Tool output remains bounded at 64 MiB per invocation and summed function listings at 128 MiB per image."
+
+func functionListingLimit(r NativeExport) int {
+	if r.Version == "native-image-disassembly-v3" {
+		return r.FunctionListingLimitBytes
+	}
+	return 64 << 20
+}
 
 type NativeExportRecord struct {
 	Expansion   *NativeExpansion    `json:"expansion,omitempty"`
@@ -40,16 +49,17 @@ type NativeExportRecord struct {
 const nativeMaterializedExportInterpretation = nativeExportInterpretation + " Version 3 adds complete defined-function coverage at a documented synchronous compile return, checked against independent input analysis. Its compile timer is code-pass diagnostic evidence, not headline latency. It does not add lifecycle or reclamation observations."
 
 type NativeExport struct {
-	BuilderArchiveVersion string               `json:"builder_archive_version,omitempty"`
-	RendererSHA256        string               `json:"renderer_sha256"`
-	ToolTimeoutNS         int64                `json:"tool_timeout_ns,omitempty"`
-	ToolOutputLimitBytes  int                  `json:"tool_output_limit_bytes,omitempty"`
-	Tools                 []NativeTool         `json:"tools,omitempty"`
-	Version               string               `json:"version"`
-	Run                   string               `json:"run"`
-	SourceChecksumsSHA256 string               `json:"source_checksums_sha256"`
-	Interpretation        string               `json:"interpretation"`
-	Records               []NativeExportRecord `json:"records"`
+	FunctionListingLimitBytes int                  `json:"function_listing_limit_bytes,omitempty"`
+	BuilderArchiveVersion     string               `json:"builder_archive_version,omitempty"`
+	RendererSHA256            string               `json:"renderer_sha256"`
+	ToolTimeoutNS             int64                `json:"tool_timeout_ns,omitempty"`
+	ToolOutputLimitBytes      int                  `json:"tool_output_limit_bytes,omitempty"`
+	Tools                     []NativeTool         `json:"tools,omitempty"`
+	Version                   string               `json:"version"`
+	Run                       string               `json:"run"`
+	SourceChecksumsSHA256     string               `json:"source_checksums_sha256"`
+	Interpretation            string               `json:"interpretation"`
+	Records                   []NativeExportRecord `json:"records"`
 }
 
 // ExportNativeCode is offline: it only decodes already-verified binary evidence.
@@ -129,6 +139,10 @@ func exportNativeCode(root, out string, finish func(string, *NativeExport) error
 			return err
 		}
 	}
+	r.RendererSHA256, err = codeRendererHashFor(r.Version)
+	if err != nil {
+		return err
+	}
 	if err = experiment.WriteJSON(filepath.Join(out, "native-code.json"), r); err != nil {
 		return err
 	}
@@ -201,10 +215,10 @@ func VerifyNativeCode(root string) error {
 	if err := experiment.ReadJSON(filepath.Join(root, "native-code.json"), &recorded); err != nil {
 		return err
 	}
-	if recorded.Version != "native-image-export-v1" && recorded.Version != "native-image-disassembly-v1" && recorded.Version != "native-image-disassembly-v2" {
+	if recorded.Version != "native-image-export-v1" && recorded.Version != "native-image-disassembly-v1" && recorded.Version != "native-image-disassembly-v2" && recorded.Version != "native-image-disassembly-v3" {
 		return fmt.Errorf("unsupported native export version %q", recorded.Version)
 	}
-	rendererHash, err := codeRendererHash()
+	rendererHash, err := codeRendererHashFor(recorded.Version)
 	if err != nil {
 		return err
 	}
@@ -212,10 +226,14 @@ func VerifyNativeCode(root string) error {
 		return fmt.Errorf("native code renderer digest differs")
 	}
 	if recorded.Version == "native-image-export-v1" {
-		if recorded.Interpretation != nativeMaterializedExportInterpretation || len(recorded.Tools) != 0 || recorded.ToolTimeoutNS != 0 || recorded.ToolOutputLimitBytes != 0 {
+		if recorded.Interpretation != nativeMaterializedExportInterpretation || len(recorded.Tools) != 0 || recorded.ToolTimeoutNS != 0 || recorded.ToolOutputLimitBytes != 0 || recorded.FunctionListingLimitBytes != 0 {
 			return fmt.Errorf("native image export policy differs")
 		}
-	} else if recorded.Interpretation != nativeDisassemblyInterpretation || len(recorded.Tools) != 2 || recorded.ToolTimeoutNS <= 0 || recorded.ToolOutputLimitBytes != 64<<20 {
+	} else if recorded.Version == "native-image-disassembly-v3" {
+		if recorded.Interpretation != nativeFunctionDisassemblyInterpretation || recorded.FunctionListingLimitBytes != 128<<20 || len(recorded.Tools) != 2 || recorded.ToolTimeoutNS <= 0 || recorded.ToolOutputLimitBytes != 64<<20 {
+			return fmt.Errorf("native function-only disassembly policy differs")
+		}
+	} else if recorded.FunctionListingLimitBytes != 0 || recorded.Interpretation != nativeDisassemblyInterpretation || len(recorded.Tools) != 2 || recorded.ToolTimeoutNS <= 0 || recorded.ToolOutputLimitBytes != 64<<20 {
 		return fmt.Errorf("native disassembly policy differs")
 	}
 	for _, tool := range recorded.Tools {
@@ -249,11 +267,15 @@ func VerifyNativeCode(root string) error {
 			}
 		}
 		if got.Disassembly != nil {
-			if (recorded.Version != "native-image-disassembly-v1" && recorded.Version != "native-image-disassembly-v2") || got.Status != "available" {
+			if (recorded.Version != "native-image-disassembly-v1" && recorded.Version != "native-image-disassembly-v2" && recorded.Version != "native-image-disassembly-v3") || got.Status != "available" {
 				return fmt.Errorf("unexpected disassembly for %s", got.Trial)
 			}
 			d := got.Disassembly
-			if d.Status != "linear_mixed_image" || d.Object != got.Path+".o" || d.Text != got.Path+".asm" || d.ObjcopyLog != got.Path+".objcopy.log" || d.ObjdumpLog != got.Path+".objdump.log" {
+			validPaths := d.Status == "linear_mixed_image" && d.Text == got.Path+".asm" && d.ObjdumpLog == got.Path+".objdump.log"
+			if recorded.Version == "native-image-disassembly-v3" {
+				validPaths = d.Status == "function_ranges" && d.Text == "" && d.ObjdumpLog == "" && len(got.Image.Functions) > 0
+			}
+			if !validPaths || d.Object != got.Path+".o" || d.ObjcopyLog != got.Path+".objcopy.log" {
 				return fmt.Errorf("unexpected disassembly paths for %s", got.Trial)
 			}
 			format, _, err := nativeELFTarget(got.Image.Architecture)
@@ -262,10 +284,13 @@ func VerifyNativeCode(root string) error {
 			}
 			copyArgs := []string{"--input-target=binary", "--output-target=" + format, "--rename-section=.data=.text,alloc,load,readonly,code,contents", got.Path, d.Object}
 			dumpArgs := []string{"--disassemble", "--disassemble-zeroes", "--section=.text", d.Object}
+			if recorded.Version == "native-image-disassembly-v3" {
+				dumpArgs = nil
+			}
 			if !reflect.DeepEqual(d.ObjcopyArgs, copyArgs) || !reflect.DeepEqual(d.ObjdumpArgs, dumpArgs) {
 				return fmt.Errorf("unexpected disassembly tool arguments for %s", got.Trial)
 			}
-			if recorded.Version == "native-image-disassembly-v2" {
+			if recorded.Version == "native-image-disassembly-v2" || recorded.Version == "native-image-disassembly-v3" {
 				if len(d.Functions) != len(got.Image.Functions) {
 					return fmt.Errorf("native function listing coverage mismatch")
 				}
@@ -281,7 +306,7 @@ func VerifyNativeCode(root string) error {
 						return err
 					}
 					listingBytes += info.Size()
-					if !info.Mode().IsRegular() || info.Size() == 0 || listingBytes > 64<<20 {
+					if !info.Mode().IsRegular() || info.Size() == 0 || listingBytes > int64(functionListingLimit(recorded)) {
 						return fmt.Errorf("invalid function listing size")
 					}
 					listing, err := os.ReadFile(filepath.Join(root, expected.Text))
@@ -299,7 +324,7 @@ func VerifyNativeCode(root string) error {
 				return fmt.Errorf("unexpected v1 function disassembly")
 			}
 			want.Disassembly = got.Disassembly
-		} else if (recorded.Version == "native-image-disassembly-v1" || recorded.Version == "native-image-disassembly-v2") && got.Status == "available" {
+		} else if (recorded.Version == "native-image-disassembly-v1" || recorded.Version == "native-image-disassembly-v2" || recorded.Version == "native-image-disassembly-v3" && got.Image != nil && len(got.Image.Functions) > 0) && got.Status == "available" {
 			return fmt.Errorf("missing disassembly for %s", got.Trial)
 		}
 		if !reflect.DeepEqual(got, want) {
@@ -321,8 +346,10 @@ func VerifyNativeCode(root string) error {
 				if err := verifyNativeObject(filepath.Join(root, got.Disassembly.Object), filepath.Join(root, got.Path), machine); err != nil {
 					return err
 				}
-				if _, err := os.Stat(filepath.Join(root, got.Disassembly.Text)); err != nil {
-					return err
+				if got.Disassembly.Text != "" {
+					if _, err := os.Stat(filepath.Join(root, got.Disassembly.Text)); err != nil {
+						return err
+					}
 				}
 			}
 		}
@@ -346,12 +373,12 @@ func VerifyNativeCode(root string) error {
 }
 
 func renderCodeHTML(r NativeExport) ([]byte, error) {
-	t, err := template.New("code.html").Funcs(template.FuncMap{"rangeRatio": func(value *float64) string {
+	t, err := template.New(nativeTemplate(r.Version)).Funcs(template.FuncMap{"rangeRatio": func(value *float64) string {
 		if value == nil {
 			return "unavailable"
 		}
 		return fmt.Sprintf("%.2f×", *value)
-	}}).ParseFS(codeAssets, "code.html")
+	}}).ParseFS(codeAssets, nativeTemplate(r.Version))
 	if err != nil {
 		return nil, err
 	}
@@ -362,8 +389,15 @@ func renderCodeHTML(r NativeExport) ([]byte, error) {
 	return output.Bytes(), nil
 }
 
-func codeRendererHash() (string, error) {
-	data, err := codeAssets.ReadFile("code.html")
+func nativeTemplate(version string) string {
+	if version == "native-image-disassembly-v3" {
+		return "code_functions.html"
+	}
+	return "code.html"
+}
+func codeRendererHash() (string, error) { return codeRendererHashFor("") }
+func codeRendererHashFor(version string) (string, error) {
+	data, err := codeAssets.ReadFile(nativeTemplate(version))
 	if err != nil {
 		return "", err
 	}

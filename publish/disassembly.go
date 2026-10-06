@@ -49,6 +49,12 @@ func functionDisassembly(object, image string, index int, f protocol.CodeFunctio
 // DisassembleNativeCode wraps images in synthetic ELF objects, independently
 // verifies byte identity, and disassembles offline. It never executes the images.
 func DisassembleNativeCode(ctx context.Context, root, out, objcopy, objdump string, timeout time.Duration) error {
+	return disassembleNative(ctx, root, out, objcopy, objdump, timeout, false)
+}
+func DisassembleNativeFunctions(ctx context.Context, root, out, objcopy, objdump string, timeout time.Duration) error {
+	return disassembleNative(ctx, root, out, objcopy, objdump, timeout, true)
+}
+func disassembleNative(ctx context.Context, root, out, objcopy, objdump string, timeout time.Duration, functionsOnly bool) error {
 	if timeout <= 0 {
 		return fmt.Errorf("tool timeout must be positive")
 	}
@@ -63,13 +69,16 @@ func DisassembleNativeCode(ctx context.Context, root, out, objcopy, objdump stri
 	if err != nil {
 		return err
 	}
-	return disassembleNativeCodeWithTools(ctx, root, out, copyTool, dumpTool, timeout)
+	return disassembleNativeModeWithTools(ctx, root, out, copyTool, dumpTool, timeout, functionsOnly)
 }
 
 // Replay supplies recorded identities directly. Every invocation checks these
 // exact hashes before and after execution rather than silently identifying a
 // replacement tool after the replay preflight.
 func disassembleNativeCodeWithTools(ctx context.Context, root, out string, copyTool, dumpTool NativeTool, timeout time.Duration) error {
+	return disassembleNativeModeWithTools(ctx, root, out, copyTool, dumpTool, timeout, false)
+}
+func disassembleNativeModeWithTools(ctx context.Context, root, out string, copyTool, dumpTool NativeTool, timeout time.Duration, functionsOnly bool) error {
 	if timeout <= 0 {
 		return fmt.Errorf("tool timeout must be positive")
 	}
@@ -79,9 +88,14 @@ func disassembleNativeCodeWithTools(ctx context.Context, root, out string, copyT
 		r.ToolOutputLimitBytes = 64 << 20
 		r.Tools = []NativeTool{copyTool, dumpTool}
 		r.Interpretation = nativeDisassemblyInterpretation
+		if functionsOnly {
+			r.Version = "native-image-disassembly-v3"
+			r.FunctionListingLimitBytes = 128 << 20
+			r.Interpretation = nativeFunctionDisassemblyInterpretation
+		}
 		for i := range r.Records {
 			record := &r.Records[i]
-			if record.Status != "available" {
+			if record.Status != "available" || functionsOnly && len(record.Image.Functions) == 0 {
 				continue
 			}
 			format, machine, err := nativeELFTarget(record.Image.Architecture)
@@ -89,6 +103,11 @@ func disassembleNativeCodeWithTools(ctx context.Context, root, out string, copyT
 				return err
 			}
 			d := &NativeDisassembly{Status: "linear_mixed_image", Object: record.Path + ".o", Text: record.Path + ".asm", ObjcopyLog: record.Path + ".objcopy.log", ObjdumpLog: record.Path + ".objdump.log"}
+			if functionsOnly {
+				d.Status = "function_ranges"
+				d.Text = ""
+				d.ObjdumpLog = ""
+			}
 			d.ObjcopyArgs = []string{"--input-target=binary", "--output-target=" + format, "--rename-section=.data=.text,alloc,load,readonly,code,contents", record.Path, d.Object}
 			stdout, stderr, err := runNativeTool(ctx, copyTool, dir, d.ObjcopyArgs, timeout)
 			if logErr := writeDiagnostic(filepath.Join(dir, d.ObjcopyLog), append(stdout, stderr...)); logErr != nil {
@@ -103,19 +122,21 @@ func disassembleNativeCodeWithTools(ctx context.Context, root, out string, copyT
 			if err = os.Chmod(filepath.Join(dir, d.Object), 0644); err != nil {
 				return err
 			}
-			d.ObjdumpArgs = []string{"--disassemble", "--disassemble-zeroes", "--section=.text", d.Object}
-			stdout, stderr, err = runNativeTool(ctx, dumpTool, dir, d.ObjdumpArgs, timeout)
-			if logErr := writeDiagnostic(filepath.Join(dir, d.Text), stdout); logErr != nil {
-				return logErr
-			}
-			if logErr := writeDiagnostic(filepath.Join(dir, d.ObjdumpLog), stderr); logErr != nil {
-				return logErr
-			}
-			if err != nil {
-				return fmt.Errorf("objdump %s: %w: %s", record.Trial, err, stderr)
-			}
-			if len(stdout) == 0 {
-				return fmt.Errorf("objdump produced no disassembly")
+			if !functionsOnly {
+				d.ObjdumpArgs = []string{"--disassemble", "--disassemble-zeroes", "--section=.text", d.Object}
+				stdout, stderr, err = runNativeTool(ctx, dumpTool, dir, d.ObjdumpArgs, timeout)
+				if logErr := writeDiagnostic(filepath.Join(dir, d.Text), stdout); logErr != nil {
+					return logErr
+				}
+				if logErr := writeDiagnostic(filepath.Join(dir, d.ObjdumpLog), stderr); logErr != nil {
+					return logErr
+				}
+				if err != nil {
+					return fmt.Errorf("objdump %s: %w: %s", record.Trial, err, stderr)
+				}
+				if len(stdout) == 0 {
+					return fmt.Errorf("objdump produced no disassembly")
+				}
 			}
 			var listingBytes int
 			for j, f := range record.Image.Functions {
@@ -128,8 +149,8 @@ func disassembleNativeCodeWithTools(ctx context.Context, root, out string, copyT
 					return fmt.Errorf("objdump %s function %d: %w: %s", record.Trial, f.WasmIndex, err, log)
 				}
 				listingBytes += len(text)
-				if len(text) == 0 || listingBytes > 64<<20 {
-					return fmt.Errorf("function listings empty or exceed 64 MiB per-image budget")
+				if len(text) == 0 || listingBytes > functionListingLimit(*r) {
+					return fmt.Errorf("function listings empty or exceed recorded per-image budget")
 				}
 				if err = writeDiagnostic(filepath.Join(dir, entry.Text), text); err != nil {
 					return err

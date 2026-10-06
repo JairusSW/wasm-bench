@@ -172,7 +172,7 @@ func nativeReplayToolPreflight(e NativeExport) func(context.Context) error {
 		if e.Version == "native-image-export-v1" {
 			return nil
 		}
-		if e.Version != "native-image-disassembly-v1" && e.Version != "native-image-disassembly-v2" {
+		if e.Version != "native-image-disassembly-v1" && e.Version != "native-image-disassembly-v2" && e.Version != "native-image-disassembly-v3" {
 			return fmt.Errorf("unsupported native replay export version")
 		}
 		if len(e.Tools) != 2 || e.ToolTimeoutNS <= 0 {
@@ -202,5 +202,5 @@ func replayNativeExport(ctx context.Context, run, out string, e NativeExport) er
 	if err := nativeReplayToolPreflight(e)(ctx); err != nil {
 		return err
 	}
-	return disassembleNativeCodeWithTools(ctx, run, out, e.Tools[0], e.Tools[1], time.Duration(e.ToolTimeoutNS))
+	return disassembleNativeModeWithTools(ctx, run, out, e.Tools[0], e.Tools[1], time.Duration(e.ToolTimeoutNS), e.Version == "native-image-disassembly-v3")
 }

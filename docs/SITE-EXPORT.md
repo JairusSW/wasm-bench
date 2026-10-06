@@ -1,0 +1,269 @@
+# Bounded site export
+
+Feature workloads emit `feature-probe` descriptors under
+`policy=recorded-feature-trials-v1`. They retain raw outcome counts by source pass,
+profile and scenario, exact contract/configuration/environment IDs, and bounded
+trial-evidence references. Cross-pass inclusion reuses the report builder's
+matching policy; same names with different contracts are excluded. Scalar baseline
+workloads emit no probe descriptor. Zero recorded trials remain zero with empty
+evidence. These counts are neither independent-launch counts nor official suite
+conformance, and contain no inferred feature-support or performance verdict.
+Descriptors are at most 10 KiB and carry at most 16 independently readable roots.
+This record kind requires a consumer supporting feature-probe records; old exports
+without the optional records remain readable by the updated consumer.
+
+```sh
+wasmbench export-site --report reports/COMPLETE --out exports/NEW
+```
+
+Before collection, coordinators may call `wasmbench export-site --describe`.
+This prints a schema-1 capability object containing `format`, `exportSchema`,
+`verification`, `chunkBytes`, `binaryBytes`, `inventoryObjects` and
+`inventoryPages`. These limits come from the exporter constants. The command
+accepts no report, output or diagnostic path and does not read source evidence,
+run measurement tools or create an export. It describes transport support,
+not source verification or operator qualification. Existing export commands and
+encodings remain readable.
+
+The command uses the installed trusted report builder to verify the seal and
+recompute its source dataset before projecting it. It never executes a builder
+archived inside an input. The output must be new and outside the input report.
+Older builder-incompatible reports fail verification; retain their legacy
+exports or re-export them with an explicitly trusted matching producer.
+
+`manifest.json` identifies the source report and seal independently. Its
+`objects` inventory is bounded to 512 entries. Larger exports use an empty
+`objects` array and `inventoryPages` descriptors. Each content-addressed inventory
+page is `{schema:1,objects:[...]}` with at most 512 payload descriptors, and the
+root contains at most 512 pages. A page descriptor records its full SHA-256,
+decoded `bytes`, payload `objects` count and total payload `contentBytes`.
+Consumers must verify all four before granting payload upload permissions; these
+commitments let admission reserve full declared storage before page expansion.
+Payloads may not also appear as inventories or be repeated across pages.
+
+`objects/SHA256` contains exact, independently decoded JSON, at most 256 KiB
+each, or admitted `binary` native-image objects at most 16 MiB. Native originals
+are stored by their complete SHA-256, without base64 in website evidence.
+Consumers validate both full hashes and decoded sizes. No data is
+synthesized from the website projection. More than 262,144 payload objects, an
+individual oversized catalog/result record or evidence value above 64 MiB fails
+explicitly and leaves no complete export directory. Legacy small-manifest encoding
+is unchanged.
+
+Oversized JSON evidence becomes a `json-resource` descriptor with `schema:1`,
+`encoding:"json-utf8"`, original `bytes` and `sha256`, and ordered `references` to
+fragments. Each `json-fragment` contains `schema:1` and at most 120 KiB of UTF-8
+`text`. Concatenate the text bytes before parsing: JSON escapes may cross fragment
+boundaries, but UTF-8 code points never do. The descriptor and fragment files each
+stay within the ordinary 256 KiB object ceiling. A logical resource is limited to
+64 MiB and 1,024 fragments. Consumers verify fragment hashes, byte count and
+original hash, and reject invalid/ambiguous reassembled JSON before publication.
+Resource reads return one descriptor/fragment; assembly is an explicit evidence
+consumer action. Small evidence objects retain their existing encoding.
+
+Paged inventories require two-stage consumer admission. The website service
+reserves page and payload bytes up front, uploads the page, then attaches it to
+its specific import before granting leaf permissions. The coordinator implements
+this protocol. A consumer must verify all page commitments and reject unresolved
+or repeated payload references before publishing a complete corpus job. Producer
+and consumer support are still development branches; production pins remain
+unchanged.
+
+Records retain exact locked configurations, tracks, workloads, environment
+facts, the producer metric registry, separate analysis versions, and result
+summaries. The export manifest records the actual exporting executable SHA-256, available
+module/Go/VCS build fields. The report retains the collecting runner's independent
+identity; an exporter upgrade does not modify that canonical report.
+Referenced pass contexts retain full manifests, admission facts and locked options.
+Timing launch medians and warmup arrays are separate evidence, excluded from
+ordinary summary records. Trial/sample and observation objects retain pass, trial
+and block identity. Trial envelopes link pass context, diagnostic details, adapter
+samples and phase events through `references`; samples and observations retain
+their legacy links. Scientific payloads are never interpreted as transport links.
+Trial details exclude the `code_image` base64 payload; admitted originals have
+separate binary and metadata resources. Oversized diagnostic values use the referenced JSON resource format.
+The original report remains authoritative. Memory result profile
+comes from its explicit stage metadata or its recorded report-level source;
+timing-pass RSS is never multiplied by inner sample count.
+
+Code-size measurement and raw-image availability are independent. The producer
+now reuses the existing `nativeRecord` rules and `CodeImage.Validate` contract to
+export admitted images from the separately verified code pass. It checks trial,
+runtime, workload, module hash, full image hash and recorded image size. Withheld
+records do not export content. Engine-reported size-only records retain their
+unavailable-content descriptors.
+
+Artifact descriptors stay below 10 KiB. They link small image metadata and
+independently bounded function-array resources, retaining exact offsets, lengths,
+Wasm indices, tiers and generation. Original function names and ranges are not
+inferred or regenerated. Function inspection can be available while disassembly
+remains explicitly unavailable; existing native-image interpretation accompanies
+the artifact. No request-time disassembly is introduced.
+
+The website service/coordinator admit `binary` objects with separate 16 MiB limits.
+Original downloads and selected byte reads require published artifact membership;
+metadata/function resources load independently. Empty originals retain their full
+hash and available-content state. The service's observation policy prevents a
+representation update from creating another measurement of the same sealed source.
+Offline disassembly derivatives and broader native scale tests remain open; these
+are development branches, not a deployed native-inspection service. Exact
+`size_bytes` values outside JavaScript's safe integer range are decimal strings
+in descriptors and code-size summaries. No hash or download is offered for
+unexported native bytes.
+
+The current registry omits the `native.code_size` metric already used by code
+records. Its export includes an explicit `unregistered` marker and retains the
+size. The marker is not a replacement scientific definition. A real registry
+addition needs report compatibility review.
+
+A consumer may trust an authenticated producer's `source-recomputed` assertion,
+but validating object hashes independently proves only transport integrity.
+Operator publication qualification is separate. The website service intentionally
+uses this wire boundary rather than importing harness execution/storage packages.
+
+Tests compare verified-source timing fields with exported fields, cover a single
+launch with multiple samples and absent intervals, separate and timing memory
+passes, size-only code, unsafe integer precision, deterministic output, corrupt
+input rejection and failed-output cleanup:
+
+```sh
+go test ./publish ./cmd/wasmbench
+```
+
+This is a development producer contract. Standalone analytical files, offline
+native derivatives, package publication and the consuming frontend migration
+remain separate follow-up work. Existing report formats and readers are unchanged.
+
+Each result now includes a bounded `measurementMethod` and its full
+`measurementMethodId`. The descriptor retains the source profile, metric,
+scenario, statistic, locked protocol/runner/host-policy fields and a normalized
+per-scenario recipe. Suite names and other scenario selections are scheduling
+metadata and do not split the recipe; the actual scenario sample override remains.
+Unsafe integer seeds and durations use exact decimal strings in this recipe.
+The descriptor is at most 64 KiB, with a 32 KiB recipe and at most 32 distinct
+observation identities.
+
+Memory identities come from the contributing source trials and the existing
+memory observation eligibility function: definition version, unit, scope, phase,
+collector/version, quality, actual profile and normalization denominator survive.
+Trial-scoped RSS is not multiplied by timing sample counts. Pass IDs and exporter
+binary identities are provenance and do not define a reusable method. Changed
+collector versions or locked recipes produce different method digests. Timing
+samples and native code records do not universally name their collector, so those
+descriptors say `not_recorded`; the exporter does not infer a collector from the
+OS or runtime name. A missing source pass yields an unavailable descriptor.
+
+These selectors project existing verified evidence without changing source
+statistics or scientific definitions. Website compatibility/cohort policy still
+needs to decide which recorded methods can be compared; matching a digest is not
+a substitute for operator qualification or independent source verification.
+
+Report descriptors also retain `sourceSchema`, independent source analysis
+versions, and `analysisSections` under version `source-fields-v1`. Each of at most
+64 entries names an original derived report JSON field and references a
+`report-analysis` envelope bound to the report and field. Throughput, scaling,
+counter displays, CPU stacks, memory timelines and other derived JSON values are
+copied from the verified source, with no new analysis. Future derived fields are
+retained when their bounded source names fit the transport. Large section bodies
+use the same JSON-resource/fragments contract as detailed trial evidence.
+
+Core typed results, metrics and passes keep their existing transport; report
+metadata contains references rather than complete analysis arrays. Consumers must
+include the section roots in import verification, portable recovery and retention.
+Legacy reports without these references remain readable. Standalone analytical
+files and bulk archives are not represented by these JSON sections.
+
+Native metadata also records `functionIndexVersion: producer-order-v1` and
+`functionShards`: ordered shard digests with exact row counts. The original
+`functions`/`references` remain for existing chunk readers. This permits a selected
+function page to skip preceding shards without loading every function. Consumers
+must validate counts against shard rows before publishing. At most 4,096 shards
+and one million attributed functions fit this index contract. Function ordering,
+indices, tier/generation and byte ranges remain producer-owned; no disassembly is
+performed by this transport or by ordinary API reads.
+
+Results with a complete source pass and recorded timestamp now include a bounded
+`samplingGroup`. It identifies the exact source manifest and canonically ordered
+trial-ID/trial-hash population for the runtime, workload, scenario and profile.
+Trial count describes source trial records, not an inferred number of independent
+launches. Separate passes with coincident block numbers have different identities;
+report-analysis versions and exporter binaries do not define the group. Missing
+source context yields no invented group. Memory uses its contributing trial set;
+timing retains its source outcome population, including failed trials. Statistical
+analysis and cross-report history/uncertainty policy remain consumer concerns.
+
+
+Existing sealed analytical outputs are preserved as `report-file` records (exact
+original Parquet name, report identity, media type, identity encoding, bytes and
+SHA-256) with ordered binary chunk commitments. Files use 1 MiB chunks with a
+1 GiB/1024-chunk ceiling. This reuses existing report-builder exports; it performs
+no new analysis. Only the eight named timing/memory analytical files found in the
+seal are considered. Missing memory files stay absent. Export rechecks regular
+file identity, streamed length and seal digest while copying; no archived code
+executes. Reassemble chunks in order and verify the original full digest for
+bulk analysis. Tool/report archives are outside this analytical-file contract.
+
+Trial-evidence lists above 128 references now use ordered `evidence-index`
+pages: `{kind:"evidence-index",schema:1,references:[...]}`. Each page contains
+one to 128 full content hashes; additional levels keep the result's evidence
+inventory at one root. The index preserves order and repeated references and
+contains no trial bodies or new measurements. Small lists retain their exact
+legacy representation. Follow pages through the existing selected-result chunk
+surface; complete import/retention/recovery must include every reachable child.
+
+The 4,500-trial synthetic gate previously failed the canonical-record ceiling.
+It now verifies all trial identities in producer order, unchanged source summary
+fields and bounded objects. Its timing record is 2,504 bytes with one root.
+This establishes transport scale, not scientific qualification of the synthetic
+trials. Other oversized catalog/result fields still fail explicitly.
+
+When the verified measurement report's `code/` export contains sealed
+`native-image-disassembly-v2` diagnostics, site export transports its attributed
+function listings as `llvm-function-listing-v1`. It reuses `export-code`'s offline
+LLVM outputs and range mappings; it never launches a disassembler itself.
+
+Each function retains its image/module/range, original text digest/bytes, tool
+executable hashes/versions, recorded argv and interpretation. Explicitly linked
+`native-functions-v2` shards reference per-function descriptors and independent
+line chunks. Chunks contain at most 256 lines and 128 KiB encoded line data;
+individual lines have a 16 KiB ceiling and a function has at most 4,096 chunks.
+Exact text, newline bytes and original image-relative addresses survive assembly.
+Legacy function arrays remain readable, and artifacts lacking exported listings
+continue to advertise unavailable disassembly. This transport is integrity-checked
+producer diagnostics, not independent redisassembly or instruction-only sizes;
+tool dynamic libraries remain unpinned.
+
+Opt-in installed-LLVM compatibility gate (synthetic attributed bytes; no benchmark
+or native-image execution):
+
+```sh
+WASMBENCH_NATIVE_LLVM_TEST=1 \
+WASMBENCH_LLVM_OBJCOPY=/path/to/llvm-objcopy \
+WASMBENCH_LLVM_OBJDUMP=/path/to/llvm-objdump \
+go test ./publish -run 'TestSiteDisassembly|TestSiteExportSealedLLVM' -count=1
+```
+
+A derivative archive can be generated and supplied separately, without altering
+the original measurement report:
+
+```sh
+wasmbench disassemble-code --functions-only --run REPORT/code/raw --out NEW_NATIVE \
+  --llvm-objcopy /trusted/llvm-objcopy --llvm-objdump /trusted/llvm-objdump
+wasmbench export-site --report REPORT --native-disassembly NEW_NATIVE --out NEW_EXPORT
+```
+
+`native-image-disassembly-v3` records function-only diagnostics. It omits the
+whole-image listing and its download, preserves the original renderer for older
+exports, and bounds output at 64 MiB per invocation plus 128 MiB summed function
+listings per image. The synthetic ELF retains the complete original image so
+function ranges preserve image-relative/PC-relative addresses. Unattributed
+images retain their original bytes and unavailable function disassembly.
+
+An external archive must independently pass `verify-code`, name the report's
+exact code-pass ID, and carry the same sealed raw-source checksum digest. A valid
+archive with the same pass ID but another seal is rejected. Site descriptors
+record embedded/external origin and code/native seal identities under an explicit
+`producer-asserted` verification label: these are provenance identities, not
+original-archive download promises or independent API verification of absent
+source evidence. Legacy transport descriptors without this optional source field
+remain readable.

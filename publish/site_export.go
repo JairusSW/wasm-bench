@@ -11,12 +11,15 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/wasmbench/wasmbench/experiment"
 )
 
 const SiteExportVersion = "site-v2"
 const SiteChunkBytes = 256 * 1024
+const SiteResourceBytes = 64 * 1024 * 1024
+const SiteFragmentBytes = 120 * 1024
 const SiteInventoryObjects = 512
 const SiteInventoryPages = 512
 
@@ -32,21 +35,31 @@ type siteInventoryPage struct {
 	Objects []SiteObject `json:"objects"`
 }
 
+type SiteExporterIdentity struct {
+	Format        string            `json:"format"`
+	BinarySHA256  string            `json:"binarySha256"`
+	GoVersion     string            `json:"goVersion,omitempty"`
+	Module        string            `json:"module,omitempty"`
+	ModuleVersion string            `json:"moduleVersion,omitempty"`
+	Build         map[string]string `json:"build,omitempty"`
+}
+
 type SiteObject struct {
 	SHA256 string `json:"sha256"`
 	Bytes  int    `json:"bytes"`
 	Kind   string `json:"kind"`
 }
 type SiteManifest struct {
-	Schema             int             `json:"schema"`
-	Format             string          `json:"format"`
-	ReportID           string          `json:"reportId"`
-	SourceReportSHA256 string          `json:"sourceReportSha256"`
-	SourceSealSHA256   string          `json:"sourceSealSha256"`
-	Exporter           string          `json:"exporter"`
-	Verification       string          `json:"verification"`
-	Objects            []SiteObject    `json:"objects"`
-	InventoryPages     []SiteInventory `json:"inventoryPages,omitempty"`
+	Schema             int                   `json:"schema"`
+	Format             string                `json:"format"`
+	ReportID           string                `json:"reportId"`
+	SourceReportSHA256 string                `json:"sourceReportSha256"`
+	SourceSealSHA256   string                `json:"sourceSealSha256"`
+	Exporter           string                `json:"exporter"`
+	Verification       string                `json:"verification"`
+	Objects            []SiteObject          `json:"objects"`
+	InventoryPages     []SiteInventory       `json:"inventoryPages,omitempty"`
+	ExporterIdentity   *SiteExporterIdentity `json:"exporterIdentity,omitempty"`
 }
 type SiteRecord struct {
 	Kind string          `json:"kind"`
@@ -56,7 +69,7 @@ type SiteRecord struct {
 
 // Exact executable identity is separate from the runner that collected the data.
 // Build settings are restricted to provenance fields, excluding local build paths.
-func siteExporterIdentity() (map[string]any, error) {
+func siteExporterIdentity() (*SiteExporterIdentity, error) {
 	executable, err := os.Executable()
 	if err != nil {
 		return nil, err
@@ -65,11 +78,11 @@ func siteExporterIdentity() (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	identity := map[string]any{"format": SiteExportVersion, "binarySha256": digest}
+	identity := &SiteExporterIdentity{Format: SiteExportVersion, BinarySHA256: digest}
 	if info, ok := debug.ReadBuildInfo(); ok {
-		identity["goVersion"] = info.GoVersion
-		identity["module"] = info.Main.Path
-		identity["moduleVersion"] = info.Main.Version
+		identity.GoVersion = info.GoVersion
+		identity.Module = info.Main.Path
+		identity.ModuleVersion = info.Main.Version
 		settings := map[string]string{}
 		for _, setting := range info.Settings {
 			switch setting.Key {
@@ -77,7 +90,7 @@ func siteExporterIdentity() (map[string]any, error) {
 				settings[setting.Key] = setting.Value
 			}
 		}
-		identity["build"] = settings
+		identity.Build = settings
 	}
 	return identity, nil
 }
@@ -151,19 +164,38 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 	if err != nil {
 		return err
 	}
-	m := SiteManifest{Schema: 2, Format: SiteExportVersion, SourceReportSHA256: siteHash(data), SourceSealSHA256: siteHash(seal), Exporter: SiteExportVersion, Verification: "source-recomputed", Objects: []SiteObject{}}
+	m := SiteManifest{Schema: 2, Format: SiteExportVersion, SourceReportSHA256: siteHash(data), SourceSealSHA256: siteHash(seal), Exporter: SiteExportVersion, Verification: "source-recomputed", Objects: []SiteObject{}, ExporterIdentity: exporter}
 	m.ReportID, err = siteID([]string{d.Bundle.Manifest.ID, m.SourceReportSHA256, m.SourceSealSHA256})
 	if err != nil {
 		return err
 	}
 	seen := map[string]bool{}
-	object := func(kind string, v any) (string, error) {
+	var object func(string, any) (string, error)
+	object = func(kind string, v any) (string, error) {
 		b, e := siteJSON(v)
 		if e != nil {
 			return "", e
 		}
 		if len(b) > SiteChunkBytes {
-			return "", fmt.Errorf("%s object exceeds %d decoded bytes", kind, SiteChunkBytes)
+			if kind != "evidence" || len(b) > SiteResourceBytes {
+				return "", fmt.Errorf("%s object exceeds resource ceiling", kind)
+			}
+			references := []string{}
+			for start := 0; start < len(b); {
+				end := min(start+SiteFragmentBytes, len(b))
+				// Each fragment is valid UTF-8, while JSON escape sequences may span
+				// fragments. Reassembly concatenates text bytes before parsing JSON.
+				for end < len(b) && !utf8.RuneStart(b[end]) {
+					end--
+				}
+				fragment, e := object("evidence", map[string]any{"kind": "json-fragment", "schema": 1, "text": string(b[start:end])})
+				if e != nil {
+					return "", e
+				}
+				references = append(references, fragment)
+				start = end
+			}
+			return object("evidence", map[string]any{"kind": "json-resource", "schema": 1, "encoding": "json-utf8", "bytes": len(b), "sha256": siteHash(b), "references": references})
 		}
 		id := siteHash(b)
 		if !seen[id] {
@@ -282,7 +314,15 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 		}
 		for _, row := range rows {
 			if len(row)+2 > SiteChunkBytes {
-				return nil, fmt.Errorf("evidence row exceeds chunk ceiling")
+				if e = flush(); e != nil {
+					return nil, e
+				}
+				id, e := object("evidence", []json.RawMessage{row})
+				if e != nil {
+					return nil, e
+				}
+				ids = append(ids, id)
+				continue
 			}
 			if size+len(row)+1 > SiteChunkBytes {
 				if e = flush(); e != nil {
@@ -351,7 +391,7 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 			trialEvidence[bundle.Manifest.ID+"\x00"+t.ID] = id
 		}
 	}
-	if err = record("report", m.ReportID, map[string]any{"runId": d.Bundle.Manifest.ID, "created": d.Bundle.Manifest.Created, "sourceReportSha256": m.SourceReportSHA256, "sourceSealSha256": m.SourceSealSHA256, "runnerSha256": d.Bundle.Manifest.Lock.RunnerSHA256, "exporterIdentity": exporter, "passContexts": passContexts, "versions": versions, "headlineLatencyPolicy": d.LatencyPolicy, "memorySource": d.MemorySource, "codeSource": d.CodeSource, "verification": m.Verification}); err != nil {
+	if err = record("report", m.ReportID, map[string]any{"runId": d.Bundle.Manifest.ID, "created": d.Bundle.Manifest.Created, "sourceReportSha256": m.SourceReportSHA256, "sourceSealSha256": m.SourceSealSHA256, "runnerSha256": d.Bundle.Manifest.Lock.RunnerSHA256, "passContexts": passContexts, "versions": versions, "headlineLatencyPolicy": d.LatencyPolicy, "memorySource": d.MemorySource, "codeSource": d.CodeSource, "verification": m.Verification}); err != nil {
 		return err
 	}
 	addResult := func(runtime, workload, scenario, profile, metric, statistic string, summary any, refs []string) error {

@@ -23,9 +23,20 @@ Payloads may not also appear as inventories or be repeated across pages.
 `objects/SHA256` contains exact, independently decoded JSON, at most 256 KiB
 each; consumers validate both full hashes and decoded sizes. No data is
 synthesized from the website projection. More than 262,144 payload objects, an
-individual oversized evidence row or catalog record fails explicitly and leaves
-no complete export directory. Large individual evidence objects need additional
-chunking. Legacy small-manifest encoding is unchanged.
+individual oversized catalog/result record or evidence value above 64 MiB fails
+explicitly and leaves no complete export directory. Legacy small-manifest encoding
+is unchanged.
+
+Oversized JSON evidence becomes a `json-resource` descriptor with `schema:1`,
+`encoding:"json-utf8"`, original `bytes` and `sha256`, and ordered `references` to
+fragments. Each `json-fragment` contains `schema:1` and at most 120 KiB of UTF-8
+`text`. Concatenate the text bytes before parsing: JSON escapes may cross fragment
+boundaries, but UTF-8 code points never do. The descriptor and fragment files each
+stay within the ordinary 256 KiB object ceiling. A logical resource is limited to
+64 MiB and 1,024 fragments. Consumers verify fragment hashes, byte count and
+original hash, and reject invalid/ambiguous reassembled JSON before publication.
+Resource reads return one descriptor/fragment; assembly is an explicit evidence
+consumer action. Small evidence objects retain their existing encoding.
 
 Paged inventories require two-stage consumer admission. The website service
 reserves page and payload bytes up front, uploads the page, then attaches it to
@@ -37,8 +48,9 @@ unchanged.
 
 Records retain exact locked configurations, tracks, workloads, environment
 facts, the producer metric registry, separate analysis versions, and result
-summaries. The report records the actual exporting executable SHA-256, available
-module/Go/VCS build fields, and the collecting runner's independent identity.
+summaries. The export manifest records the actual exporting executable SHA-256, available
+module/Go/VCS build fields. The report retains the collecting runner's independent
+identity; an exporter upgrade does not modify that canonical report.
 Referenced pass contexts retain full manifests, admission facts and locked options.
 Timing launch medians and warmup arrays are separate evidence, excluded from
 ordinary summary records. Trial/sample and observation objects retain pass, trial
@@ -46,7 +58,7 @@ and block identity. Trial envelopes link pass context, diagnostic details, adapt
 samples and phase events through `references`; samples and observations retain
 their legacy links. Scientific payloads are never interpreted as transport links.
 Trial details preserve all remaining fields except `code_image`, whose binary
-transport is pending. Individually oversized diagnostic objects fail explicitly.
+transport is pending. Oversized diagnostic values use the referenced JSON resource format.
 The original report remains authoritative. Memory result profile
 comes from its explicit stage metadata or its recorded report-level source;
 timing-pass RSS is never multiplied by inner sample count.

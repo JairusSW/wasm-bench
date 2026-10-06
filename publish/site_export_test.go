@@ -279,10 +279,13 @@ func TestSiteExportPassAndTrialEvidence(t *testing.T) {
 				t.Fatal(err)
 			}
 			if record.Kind == "report" {
+				var metadata map[string]json.RawMessage
+				_ = json.Unmarshal(record.Data, &metadata)
+				if metadata["exporterIdentity"] != nil {
+					t.Fatal("exporter binary contaminated scientific report identity")
+				}
+
 				var report struct {
-					ExporterIdentity struct {
-						BinarySHA256 string `json:"binarySha256"`
-					} `json:"exporterIdentity"`
 					PassContexts []string `json:"passContexts"`
 				}
 				if err = json.Unmarshal(record.Data, &report); err != nil {
@@ -290,7 +293,7 @@ func TestSiteExportPassAndTrialEvidence(t *testing.T) {
 				}
 				executable, _ := os.Executable()
 				digest, err := experiment.DigestFile(executable)
-				if err != nil || report.ExporterIdentity.BinarySHA256 != digest || len(report.PassContexts) != 1 {
+				if err != nil || manifest.ExporterIdentity == nil || manifest.ExporterIdentity.BinarySHA256 != digest || len(report.PassContexts) != 1 {
 					t.Fatal("exporter/pass provenance lost")
 				}
 			}
@@ -425,5 +428,85 @@ func TestSiteExportPagedInventoryCoverage(t *testing.T) {
 		if !trials[trial.ID] {
 			t.Fatalf("lost trial %s", trial.ID)
 		}
+	}
+}
+
+func TestSiteExportLargeEvidencePreservesExactJSON(t *testing.T) {
+	d := siteFixture()
+	// A pass context, trial log and one phase row each exceed the normal chunk.
+	d.Bundle.Manifest.Lock.Options.Suite = strings.Repeat("λ 🦀 \\", 70000)
+	d.Bundle.Trials[0].Log = strings.Repeat("large diagnostic λ ", 30000)
+	d.Bundle.Trials[0].PhaseEvents = []experiment.PhaseRecord{{Observations: []protocol.Observation{{Reason: strings.Repeat("phase diagnostic ", 20000)}}}}
+	data, _ := json.Marshal(d)
+	out := filepath.Join(t.TempDir(), "site")
+	if err := writeSiteDataset(d, data, []byte("seal"), out); err != nil {
+		t.Fatal(err)
+	}
+	var manifest SiteManifest
+	if err := experiment.ReadJSON(filepath.Join(out, "manifest.json"), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	resources := 0
+	for _, object := range manifest.Objects {
+		b, err := os.ReadFile(filepath.Join(out, "objects", object.SHA256))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(b) > SiteChunkBytes {
+			t.Fatal("oversized emitted object")
+		}
+		var resource struct {
+			Kind       string
+			Schema     int
+			Bytes      int
+			SHA256     string
+			References []string
+		}
+		if json.Unmarshal(b, &resource) != nil || resource.Kind != "json-resource" {
+			continue
+		}
+		resources++
+		assembled := []byte{}
+		for _, ref := range resource.References {
+			var part struct {
+				Kind   string
+				Schema int
+				Text   string
+			}
+			if err = experiment.ReadJSON(filepath.Join(out, "objects", ref), &part); err != nil {
+				t.Fatal(err)
+			}
+			if part.Kind != "json-fragment" || part.Schema != 1 || len(part.Text) > SiteFragmentBytes {
+				t.Fatal("invalid fragment")
+			}
+			assembled = append(assembled, part.Text...)
+		}
+		if len(assembled) != resource.Bytes || siteHash(assembled) != resource.SHA256 || !json.Valid(assembled) {
+			t.Fatal("changed reassembled JSON")
+		}
+		if len(assembled) > 0 && assembled[0] == '[' {
+			want, _ := json.Marshal(d.Bundle.Trials[0].PhaseEvents)
+			if string(assembled) != string(want) {
+				t.Fatal("changed oversized phase row")
+			}
+			continue
+		}
+		var original map[string]json.RawMessage
+		_ = json.Unmarshal(assembled, &original)
+		if string(original["kind"]) == `"pass-context"` {
+			want, _ := json.Marshal(d.Bundle.Manifest)
+			if string(original["manifest"]) != string(want) {
+				t.Fatal("changed large pass recipe")
+			}
+		} else if string(original["kind"]) == `"trial-details"` {
+			var details struct{ Log string }
+			_ = json.Unmarshal(original["data"], &details)
+			if details.Log != d.Bundle.Trials[0].Log {
+				t.Fatal("changed large trial diagnostic")
+			}
+		}
+	}
+	if resources < 3 {
+		t.Fatal("large evidence was not fragmented")
 	}
 }

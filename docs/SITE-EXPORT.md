@@ -221,3 +221,28 @@ WASMBENCH_LLVM_OBJCOPY=/path/to/llvm-objcopy \
 WASMBENCH_LLVM_OBJDUMP=/path/to/llvm-objdump \
 go test ./publish -run 'TestSiteDisassembly|TestSiteExportSealedLLVM' -count=1
 ```
+
+A derivative archive can be generated and supplied separately, without altering
+the original measurement report:
+
+```sh
+wasmbench disassemble-code --functions-only --run REPORT/code/raw --out NEW_NATIVE \
+  --llvm-objcopy /trusted/llvm-objcopy --llvm-objdump /trusted/llvm-objdump
+wasmbench export-site --report REPORT --native-disassembly NEW_NATIVE --out NEW_EXPORT
+```
+
+`native-image-disassembly-v3` records function-only diagnostics. It omits the
+whole-image listing and its download, preserves the original renderer for older
+exports, and bounds output at 64 MiB per invocation plus 128 MiB summed function
+listings per image. The synthetic ELF retains the complete original image so
+function ranges preserve image-relative/PC-relative addresses. Unattributed
+images retain their original bytes and unavailable function disassembly.
+
+An external archive must independently pass `verify-code`, name the report's
+exact code-pass ID, and carry the same sealed raw-source checksum digest. A valid
+archive with the same pass ID but another seal is rejected. Site descriptors
+record embedded/external origin and code/native seal identities under an explicit
+`producer-asserted` verification label: these are provenance identities, not
+original-archive download promises or independent API verification of absent
+source evidence. Legacy transport descriptors without this optional source field
+remain readable.

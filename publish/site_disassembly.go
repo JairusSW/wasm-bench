@@ -14,36 +14,67 @@ import (
 
 // The existing sealed native exporter owns LLVM execution and range mapping.
 // Site export only transports its verified diagnostics, never invokes tools.
-func siteDisassemblies(report string) (map[string]NativeExportRecord, []NativeTool, string, error) {
+type siteDisassemblyScope struct {
+	Location         string `json:"location"`
+	CodePassID       string `json:"codePassId"`
+	CodeSealSHA256   string `json:"codeSealSha256"`
+	NativeSealSHA256 string `json:"nativeSealSha256"`
+	Verification     string `json:"verification"`
+}
+
+func siteDisassemblies(report, external string, code *CodeSource) (map[string]NativeExportRecord, []NativeTool, string, *siteDisassemblyScope, error) {
 	records := map[string]NativeExportRecord{}
-	if report == "" {
-		return records, nil, "", nil
+	if report == "" && external == "" {
+		return records, nil, "", nil, nil
 	}
 	root := filepath.Join(report, "code")
+	location := "embedded-report"
+	if external != "" {
+		root = external
+		location = "external-archive"
+	}
 	b, err := os.ReadFile(filepath.Join(root, "native-code.json"))
-	if os.IsNotExist(err) {
-		return records, nil, "", nil
+	if os.IsNotExist(err) && external == "" {
+		return records, nil, "", nil, nil
 	}
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	var source NativeExport
 	if err = json.Unmarshal(b, &source); err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
-	if source.Version != "native-image-disassembly-v2" {
-		return records, nil, "", nil
+	if source.Version != "native-image-disassembly-v2" && source.Version != "native-image-disassembly-v3" {
+		if external != "" {
+			return nil, nil, "", nil, fmt.Errorf("external native archive lacks supported per-function disassembly")
+		}
+		return records, nil, "", nil, nil
+	}
+	if code == nil || code.ID == "" || source.Run != code.ID {
+		return nil, nil, "", nil, fmt.Errorf("native archive code-pass identity differs")
 	}
 	if err = VerifyNativeCode(root); err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
+	expected, err := os.ReadFile(filepath.Join(report, "code", "raw", "checksums.json"))
+	if err != nil {
+		return nil, nil, "", nil, err
+	}
+	if source.SourceChecksumsSHA256 != siteHash(expected) {
+		return nil, nil, "", nil, fmt.Errorf("native archive source seal differs from measurement code pass")
+	}
+	nativeSeal, err := os.ReadFile(filepath.Join(root, "checksums.json"))
+	if err != nil {
+		return nil, nil, "", nil, err
+	}
+	scope := &siteDisassemblyScope{Location: location, CodePassID: source.Run, CodeSealSHA256: source.SourceChecksumsSHA256, NativeSealSHA256: siteHash(nativeSeal), Verification: "producer-asserted"}
 	for _, record := range source.Records {
-		if _, exists := records[record.Trial]; exists {
-			return nil, nil, "", fmt.Errorf("duplicate disassembly trial")
+		if _, ok := records[record.Trial]; ok {
+			return nil, nil, "", nil, fmt.Errorf("duplicate disassembly trial")
 		}
 		records[record.Trial] = record
 	}
-	return records, source.Tools, source.Version, nil
+	return records, source.Tools, source.Version, scope, nil
 }
 
 type siteNativeFunction struct {
@@ -51,11 +82,11 @@ type siteNativeFunction struct {
 	Disassembly string `json:"disassembly,omitempty"`
 }
 
-func siteNativeFunctions(image protocol.CodeImage, source *NativeExportRecord, tools []NativeTool, sourceVersion string, object func(string, any) (string, error)) ([]string, []int, error) {
+func siteNativeFunctions(image protocol.CodeImage, source *NativeExportRecord, tools []NativeTool, sourceVersion string, object func(string, any) (string, error), scopes ...*siteDisassemblyScope) ([]string, []int, error) {
 	rows := []siteNativeFunction{}
 	derivative := false
 	if source != nil {
-		if source.Image == nil || source.Image.SHA256 != image.SHA256 || source.Image.ModuleSHA256 != image.ModuleSHA256 || source.Image.Architecture != image.Architecture || source.Image.Backend != image.Backend || !reflect.DeepEqual(source.Image.Functions, image.Functions) || source.Disassembly == nil || len(source.Disassembly.Functions) != len(image.Functions) || len(tools) != 2 || sourceVersion != "native-image-disassembly-v2" {
+		if source.Image == nil || source.Image.SHA256 != image.SHA256 || source.Image.ModuleSHA256 != image.ModuleSHA256 || source.Image.Architecture != image.Architecture || source.Image.Backend != image.Backend || !reflect.DeepEqual(source.Image.Functions, image.Functions) || source.Disassembly == nil || len(source.Disassembly.Functions) != len(image.Functions) || len(tools) != 2 || (sourceVersion != "native-image-disassembly-v2" && sourceVersion != "native-image-disassembly-v3") {
 			return nil, nil, fmt.Errorf("offline derivative source differs")
 		}
 		for _, tool := range tools {
@@ -121,7 +152,11 @@ func siteNativeFunctions(image protocol.CodeImage, source *NativeExportRecord, t
 			for _, tool := range tools {
 				toolIDs = append(toolIDs, map[string]string{"sha256": tool.SHA256, "version": tool.Version})
 			}
-			id, err := object("evidence", map[string]any{"kind": "native-function-disassembly", "version": "llvm-function-listing-v1", "sourceVersion": sourceVersion, "imageSha256": image.SHA256, "moduleSha256": image.ModuleSHA256, "architecture": image.Architecture, "function": function, "tools": toolIDs, "arguments": entry.ObjdumpArgs, "interpretation": nativeDisassemblyInterpretation, "textSha256": siteHash([]byte(entry.Listing)), "bytes": len(entry.Listing), "lines": len(lines), "chunks": chunks, "references": refs})
+			payload := map[string]any{"kind": "native-function-disassembly", "version": "llvm-function-listing-v1", "sourceVersion": sourceVersion, "imageSha256": image.SHA256, "moduleSha256": image.ModuleSHA256, "architecture": image.Architecture, "function": function, "tools": toolIDs, "arguments": entry.ObjdumpArgs, "interpretation": siteDisassemblyInterpretation(sourceVersion), "textSha256": siteHash([]byte(entry.Listing)), "bytes": len(entry.Listing), "lines": len(lines), "chunks": chunks, "references": refs}
+			if len(scopes) > 0 && scopes[0] != nil {
+				payload["source"] = scopes[0]
+			}
+			id, err := object("evidence", payload)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -166,4 +201,11 @@ func siteNativeFunctions(image protocol.CodeImage, source *NativeExportRecord, t
 		start = end
 	}
 	return refs, counts, nil
+}
+
+func siteDisassemblyInterpretation(version string) string {
+	if version == "native-image-disassembly-v3" {
+		return nativeFunctionDisassemblyInterpretation
+	}
+	return nativeDisassemblyInterpretation
 }

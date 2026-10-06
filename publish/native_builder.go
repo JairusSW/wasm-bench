@@ -47,7 +47,7 @@ func regenerateNativeDisassembly(root, out string) error {
 	if err := experiment.ReadJSON(filepath.Join(root, "native-code.json"), &saved); err != nil {
 		return err
 	}
-	if saved.Version != "native-image-disassembly-v1" && saved.Version != "native-image-disassembly-v2" {
+	if saved.Version != "native-image-disassembly-v1" && saved.Version != "native-image-disassembly-v2" && saved.Version != "native-image-disassembly-v3" {
 		return fmt.Errorf("expected native disassembly evidence")
 	}
 	return exportNativeCode(filepath.Join(root, "raw"), out, func(dir string, derived *NativeExport) error {
@@ -55,7 +55,8 @@ func regenerateNativeDisassembly(root, out string) error {
 		derived.ToolTimeoutNS = saved.ToolTimeoutNS
 		derived.ToolOutputLimitBytes = saved.ToolOutputLimitBytes
 		derived.Tools = saved.Tools
-		derived.Interpretation = nativeDisassemblyInterpretation
+		derived.Interpretation = saved.Interpretation
+		derived.FunctionListingLimitBytes = saved.FunctionListingLimitBytes
 		for i := range derived.Records {
 			d := saved.Records[i].Disassembly
 			if d == nil {
@@ -68,6 +69,9 @@ func regenerateNativeDisassembly(root, out string) error {
 				paths = append(paths, f.Text, f.ObjdumpLog)
 			}
 			for _, path := range paths {
+				if path == "" {
+					continue
+				}
 				if err := experiment.CopyExclusive(filepath.Join(root, path), filepath.Join(dir, path)); err != nil {
 					return err
 				}

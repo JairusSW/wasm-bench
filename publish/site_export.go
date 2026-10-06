@@ -110,7 +110,17 @@ func siteID(v any) (string, error) {
 // ExportSite verifies with the installed, trusted builder. It never executes
 // the report's archived executable. Historical builder mismatches fail closed.
 func ExportSite(report, out string) error {
-	if err := reportOutsideInputs([]string{report}, out); err != nil {
+	return ExportSiteWithDisassembly(report, out, "")
+}
+
+// Additional diagnostics retain their separate seal identity and must prove
+// the exact code-pass source already recorded by the measurement report.
+func ExportSiteWithDisassembly(report, out, nativeArchive string) error {
+	inputs := []string{report}
+	if nativeArchive != "" {
+		inputs = append(inputs, nativeArchive)
+	}
+	if err := reportOutsideInputs(inputs, out); err != nil {
 		return err
 	}
 	if err := VerifyReport(report); err != nil {
@@ -146,14 +156,17 @@ func ExportSite(report, out string) error {
 		}
 		bundles = append(bundles, b)
 	}
-	return writeSiteDatasetFiles(d, data, seal, out, report, bundles...)
+	return writeSiteDatasetSources(d, data, seal, out, report, nativeArchive, bundles...)
 }
 
 func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experiment.Bundle) error {
 	return writeSiteDatasetFiles(d, data, seal, out, "", extra...)
 }
 
-func writeSiteDatasetFiles(d Dataset, data, seal []byte, out, report string, extra ...experiment.Bundle) (err error) {
+func writeSiteDatasetFiles(d Dataset, data, seal []byte, out, report string, extra ...experiment.Bundle) error {
+	return writeSiteDatasetSources(d, data, seal, out, report, "", extra...)
+}
+func writeSiteDatasetSources(d Dataset, data, seal []byte, out, report, nativeArchive string, extra ...experiment.Bundle) (err error) {
 	if err = os.Mkdir(out, 0755); err != nil {
 		return err
 	}
@@ -592,7 +605,7 @@ func writeSiteDatasetFiles(d Dataset, data, seal []byte, out, report string, ext
 			}
 		}
 	}
-	disassemblies, disassemblyTools, disassemblySourceVersion, e := siteDisassemblies(report)
+	disassemblies, disassemblyTools, disassemblySourceVersion, disassemblyScope, e := siteDisassemblies(report, nativeArchive, d.CodeSource)
 	if e != nil {
 		return e
 	}
@@ -650,7 +663,7 @@ func writeSiteDatasetFiles(d Dataset, data, seal []byte, out, report string, ext
 				if derivative == nil {
 					functions, counts, e = chunksWithCounts(image.Functions)
 				} else {
-					functions, counts, e = siteNativeFunctions(image, derivative, disassemblyTools, disassemblySourceVersion, object)
+					functions, counts, e = siteNativeFunctions(image, derivative, disassemblyTools, disassemblySourceVersion, object, disassemblyScope)
 				}
 				if e != nil {
 					return e

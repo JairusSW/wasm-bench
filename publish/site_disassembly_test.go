@@ -113,8 +113,37 @@ func TestSiteExportSealedLLVMDisassembly(t *testing.T) {
 	if dumpPath == "" {
 		dumpPath = "/opt/homebrew/opt/llvm/bin/llvm-objdump"
 	}
-	if err := DisassembleNativeCode(context.Background(), raw, code, copyPath, dumpPath, 10*time.Second); err != nil {
+	generate := DisassembleNativeCode
+	if os.Getenv("WASMBENCH_FUNCTIONS_ONLY_TEST") == "1" {
+		generate = DisassembleNativeFunctions
+	}
+	if err := generate(context.Background(), raw, code, copyPath, dumpPath, 10*time.Second); err != nil {
 		t.Fatal(err)
+	}
+	regenerated := filepath.Join(t.TempDir(), "regenerated")
+	if err := regenerateNativeDisassembly(code, regenerated); err != nil {
+		t.Fatal("offline derivative regeneration", err)
+	}
+	if err := VerifyNativeCode(regenerated); err != nil {
+		t.Fatal("regenerated derivative verification", err)
+	}
+	if os.Getenv("WASMBENCH_FUNCTIONS_ONLY_TEST") == "1" {
+		var native NativeExport
+		if err := experiment.ReadJSON(filepath.Join(code, "native-code.json"), &native); err != nil {
+			t.Fatal(err)
+		}
+		if native.Version != "native-image-disassembly-v3" || native.FunctionListingLimitBytes != 128<<20 {
+			t.Fatal("function-only policy not recorded")
+		}
+		for _, record := range native.Records {
+			if record.Disassembly != nil && (record.Disassembly.Text != "" || record.Disassembly.ObjdumpLog != "" || record.Disassembly.Status != "function_ranges") {
+				t.Fatal("whole-image diagnostic inferred")
+			}
+		}
+		html, err := os.ReadFile(filepath.Join(code, "index.html"))
+		if err != nil || strings.Contains(string(html), "download>Linear disassembly</a>") {
+			t.Fatal("missing full listing download advertised", err)
+		}
 	}
 	data, _ := json.Marshal(d)
 	if err := os.WriteFile(filepath.Join(report, "data.json"), data, 0644); err != nil {
@@ -128,7 +157,17 @@ func TestSiteExportSealedLLVMDisassembly(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := filepath.Join(t.TempDir(), "site")
-	if err = writeSiteDatasetFiles(d, data, seal, out, report, bundle); err != nil {
+	external := ""
+	if os.Getenv("WASMBENCH_EXTERNAL_DISASSEMBLY_TEST") == "1" {
+		external = filepath.Join(t.TempDir(), "native")
+		if err = os.Mkdir(external, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err = os.CopyFS(external, os.DirFS(code)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = writeSiteDatasetSources(d, data, seal, out, report, external, bundle); err != nil {
 		t.Fatal(err)
 	}
 	var export SiteManifest
@@ -158,6 +197,54 @@ func TestSiteExportSealedLLVMDisassembly(t *testing.T) {
 			}
 			found = true
 		}
+	}
+	records, _, _, scope, err := siteDisassemblies(report, external, d.CodeSource)
+	if err != nil || len(records) == 0 || scope.CodeSealSHA256 == "" || scope.NativeSealSHA256 == "" || scope.Verification != "producer-asserted" {
+		t.Fatal("archive identity absent", scope, err)
+	}
+	wrong := *d.CodeSource
+	wrong.ID = "wrong-pass"
+	if _, _, _, _, err = siteDisassemblies(report, external, &wrong); err == nil {
+		t.Fatal("foreign pass accepted")
+	}
+	if external != "" {
+		// A separately valid archive with the same run ID but different sealed
+		// source metadata must not substitute for the report's exact pass.
+		foreignRaw := filepath.Join(t.TempDir(), "raw")
+		if err = os.Mkdir(foreignRaw, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err = os.CopyFS(foreignRaw, os.DirFS(raw)); err != nil {
+			t.Fatal(err)
+		}
+		var changed experiment.Manifest
+		if err = experiment.ReadJSON(filepath.Join(foreignRaw, "manifest.json"), &changed); err != nil {
+			t.Fatal(err)
+		}
+		changed.Created = time.Date(2026, 10, 6, 1, 2, 3, 0, time.UTC)
+		bytes, _ := json.Marshal(changed)
+		if err = os.WriteFile(filepath.Join(foreignRaw, "manifest.json"), bytes, 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err = os.Remove(filepath.Join(foreignRaw, "checksums.json")); err != nil {
+			t.Fatal(err)
+		}
+		if err = experiment.Seal(foreignRaw); err != nil {
+			t.Fatal(err)
+		}
+		foreign := filepath.Join(t.TempDir(), "native")
+		if err = generate(context.Background(), foreignRaw, foreign, copyPath, dumpPath, 10*time.Second); err != nil {
+			t.Fatal(err)
+		}
+		if err = VerifyNativeCode(foreign); err != nil {
+			t.Fatal("foreign archive fixture must be valid", err)
+		}
+		if _, _, _, _, err = siteDisassemblies(report, foreign, d.CodeSource); err == nil || !strings.Contains(err.Error(), "source seal differs") {
+			t.Fatal("same-ID foreign sealed pass accepted", err)
+		}
+	}
+	if external != "" && scope.Location != "external-archive" {
+		t.Fatal("external archive identity hidden")
 	}
 	if !found {
 		t.Fatal("missing artifact")

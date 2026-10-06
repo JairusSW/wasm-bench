@@ -957,6 +957,7 @@ func run(ctx context.Context, args []string) error {
 		objcopy := f.String("llvm-objcopy", "llvm-objcopy", "trusted local LLVM object converter")
 		objdump := f.String("llvm-objdump", "llvm-objdump", "trusted local LLVM disassembler")
 		timeout := f.Duration("tool-timeout", 30*time.Second, "deadline per disassembly tool invocation")
+		functionsOnly := f.Bool("functions-only", false, "disassemble-code: collect only attributed function ranges")
 		path := f.String("run", "", "verified code-profile run bundle")
 		out := f.String("out", "", "new offline export directory")
 		if e = f.Parse(args[1:]); e != nil {
@@ -965,7 +966,13 @@ func run(ctx context.Context, args []string) error {
 		if *path == "" || *out == "" {
 			return fmt.Errorf("--run and --out are required")
 		}
+		if *functionsOnly && args[0] != "disassemble-code" {
+			return fmt.Errorf("--functions-only requires disassemble-code")
+		}
 		if args[0] == "disassemble-code" {
+			if *functionsOnly {
+				return publish.DisassembleNativeFunctions(ctx, *path, *out, *objcopy, *objdump, *timeout)
+			}
 			return publish.DisassembleNativeCode(ctx, *path, *out, *objcopy, *objdump, *timeout)
 		}
 		return publish.ExportNativeCode(*path, *out)
@@ -1045,13 +1052,14 @@ func run(ctx context.Context, args []string) error {
 		f := flags("export-site")
 		report := f.String("report", "", "verified sealed measurement report")
 		out := f.String("out", "", "new bounded site-v2 export directory")
+		nativeArchive := f.String("native-disassembly", "", "separately sealed offline native disassembly archive for the exact code pass")
 		if err := f.Parse(args[1:]); err != nil {
 			return err
 		}
 		if *report == "" || *out == "" || f.NArg() != 0 {
 			return fmt.Errorf("export-site requires --report and --out")
 		}
-		return publish.ExportSite(*report, *out)
+		return publish.ExportSiteWithDisassembly(*report, *out, *nativeArchive)
 	case "verify-report":
 		f := flags("verify-report")
 		dir := f.String("dir", "", "sealed static report directory")

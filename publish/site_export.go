@@ -211,7 +211,7 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 		return id, nil
 	}
 	binary := func(b []byte) (string, error) {
-		if len(b) == 0 || len(b) > 16*1024*1024 {
+		if len(b) > 16*1024*1024 {
 			return "", fmt.Errorf("native bytes exceed producer contract")
 		}
 		id := siteHash(b)

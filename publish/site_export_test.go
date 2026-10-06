@@ -655,3 +655,35 @@ func TestSiteExportDoesNotExposeWithheldNativeImage(t *testing.T) {
 		}
 	}
 }
+
+func TestSiteExportEmptyNativeOriginal(t *testing.T) {
+	d, bundle, _ := nativeSiteFixture()
+	image := bundle.Trials[0].CodeImage
+	image.Version = 1
+	image.FunctionAttribution = "unavailable"
+	image.Functions = nil
+	image.Data = []byte{}
+	image.SHA256 = siteHash(nil)
+	zero := 0
+	size := uint64(0)
+	d.CodeRecords[0].ImageBytes = &zero
+	d.CodeRecords[0].SizeBytes = &size
+	data, _ := json.Marshal(d)
+	out := filepath.Join(t.TempDir(), "site")
+	if err := writeSiteDataset(d, data, []byte("seal"), out, bundle); err != nil {
+		t.Fatal(err)
+	}
+	var manifest SiteManifest
+	if err := experiment.ReadJSON(filepath.Join(out, "manifest.json"), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, object := range manifest.Objects {
+		if object.Kind == "binary" && object.SHA256 == siteHash(nil) && object.Bytes == 0 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("empty original became unavailable content")
+	}
+}

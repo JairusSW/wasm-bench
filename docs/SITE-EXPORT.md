@@ -79,10 +79,13 @@ inferred or regenerated. Function inspection can be available while disassembly
 remains explicitly unavailable; existing native-image interpretation accompanies
 the artifact. No request-time disassembly is introduced.
 
-The website service/coordinator currently reject the `binary` object kind. Before
-enabling that path, implement binary storage/download and ensure representation
-changes do not duplicate scientific history. This producer-only stage is not
-end-to-end native publication. Exact
+The website service/coordinator admit `binary` objects with separate 16 MiB limits.
+Original downloads and selected byte reads require published artifact membership;
+metadata/function resources load independently. Empty originals retain their full
+hash and available-content state. The service's observation policy prevents a
+representation update from creating another measurement of the same sealed source.
+Offline disassembly derivatives and broader native scale tests remain open; these
+are development branches, not a deployed native-inspection service. Exact
 `size_bytes` values outside JavaScript's safe integer range are decimal strings
 in descriptors and code-size summaries. No hash or download is offered for
 unexported native bytes.

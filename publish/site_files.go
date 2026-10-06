@@ -20,15 +20,17 @@ type SiteFileChunk struct {
 	Bytes  int    `json:"bytes"`
 }
 type SiteReportFile struct {
-	Schema    int             `json:"schema"`
-	Kind      string          `json:"kind"`
-	ReportID  string          `json:"reportId"`
-	Name      string          `json:"name"`
-	MediaType string          `json:"mediaType"`
-	Encoding  string          `json:"encoding"`
-	SHA256    string          `json:"sha256"`
-	Bytes     int64           `json:"bytes"`
-	Chunks    []SiteFileChunk `json:"chunks"`
+	Schema           int             `json:"schema"`
+	Kind             string          `json:"kind"`
+	ReportID         string          `json:"reportId"`
+	Name             string          `json:"name"`
+	MediaType        string          `json:"mediaType"`
+	Encoding         string          `json:"encoding"`
+	SHA256           string          `json:"sha256"`
+	Bytes            int64           `json:"bytes"`
+	Chunks           []SiteFileChunk `json:"chunks"`
+	PackingVersion   string          `json:"packingVersion,omitempty"`
+	SourceSealSHA256 string          `json:"sourceSealSha256,omitempty"`
 }
 
 // Only existing sealed analytical files are projected. No analytical writer or

@@ -463,6 +463,9 @@ func writeSiteDatasetFiles(d Dataset, data, seal []byte, out, report string, ext
 	if err != nil {
 		return err
 	}
+	if err = siteReportArchive(report, seal, m.ReportID, binary, object); err != nil {
+		return err
+	}
 	if err = record("report", m.ReportID, map[string]any{"sourceSchema": d.Schema, "runId": d.Bundle.Manifest.ID, "created": d.Bundle.Manifest.Created, "sourceReportSha256": m.SourceReportSHA256, "sourceSealSha256": m.SourceSealSHA256, "runnerSha256": d.Bundle.Manifest.Lock.RunnerSHA256, "passContexts": passContexts, "analysisSectionVersion": "source-fields-v1", "analysisSections": analysisSections, "versions": versions, "headlineLatencyPolicy": d.LatencyPolicy, "memorySource": d.MemorySource, "codeSource": d.CodeSource, "verification": m.Verification}); err != nil {
 		return err
 	}

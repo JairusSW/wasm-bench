@@ -527,6 +527,7 @@ func nativeSiteFixture() (Dataset, experiment.Bundle, []byte) {
 	d.CodeRecords[0].SizeBytes = &size
 	bundle := experiment.Bundle{Manifest: experiment.Manifest{ID: "code-pass"}, Trials: []experiment.Trial{{ID: "code-0", Runtime: "engine", Workload: "fixture/a", Profile: "code", Scenario: "compile", Status: "ok", CodeImage: image}}}
 	bundle.Manifest.Lock.Options.Profile = "code"
+	bundle.Manifest.Created = d.Bundle.Manifest.Created
 	return d, bundle, native
 }
 

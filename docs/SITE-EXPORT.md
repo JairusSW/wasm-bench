@@ -160,3 +160,13 @@ must validate counts against shard rows before publishing. At most 4,096 shards
 and one million attributed functions fit this index contract. Function ordering,
 indices, tier/generation and byte ranges remain producer-owned; no disassembly is
 performed by this transport or by ordinary API reads.
+
+Results with a complete source pass and recorded timestamp now include a bounded
+`samplingGroup`. It identifies the exact source manifest and canonically ordered
+trial-ID/trial-hash population for the runtime, workload, scenario and profile.
+Trial count describes source trial records, not an inferred number of independent
+launches. Separate passes with coincident block numbers have different identities;
+report-analysis versions and exporter binaries do not define the group. Missing
+source context yields no invented group. Memory uses its contributing trial set;
+timing retains its source outcome population, including failed trials. Statistical
+analysis and cross-report history/uncertainty policy remain consumer concerns.

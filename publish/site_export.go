@@ -492,6 +492,13 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 		if e != nil {
 			return e
 		}
+		group, e := siteSamplingGroup(append([]experiment.Bundle{d.Bundle}, extra...), pass, runtime, workload, scenario, profile, trials)
+		if e != nil {
+			return e
+		}
+		if group != nil {
+			value["samplingGroup"] = group
+		}
 		id, e := siteID(value)
 		if e != nil {
 			return e

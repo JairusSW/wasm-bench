@@ -2,6 +2,7 @@ package publish
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -334,6 +335,95 @@ func TestSiteExportPassAndTrialEvidence(t *testing.T) {
 	for _, kind := range []string{"pass-context", "trial-details", "summary-diagnostics"} {
 		if !kinds[kind] {
 			t.Fatalf("missing %s", kind)
+		}
+	}
+}
+
+func TestSiteExportPagedInventoryCoverage(t *testing.T) {
+	d := siteFixture()
+	original := d.Bundle.Trials[0]
+	d.Bundle.Trials = nil
+	for i := 0; i < 2000; i++ {
+		trial := original
+		trial.ID = fmt.Sprintf("launch-%d", i)
+		trial.Block = i
+		d.Bundle.Trials = append(d.Bundle.Trials, trial)
+	}
+	data, _ := json.Marshal(d)
+	out := filepath.Join(t.TempDir(), "site")
+	if err := writeSiteDataset(d, data, []byte("large synthetic seal"), out); err != nil {
+		t.Fatal(err)
+	}
+	manifestBytes, err := os.ReadFile(filepath.Join(out, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest SiteManifest
+	if err = json.Unmarshal(manifestBytes, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Objects) != 0 || len(manifest.InventoryPages) < 2 || len(manifestBytes) > 50*1024 {
+		t.Fatal("large inventory was embedded or unbounded")
+	}
+	seen := map[string]bool{}
+	trials := map[string]bool{}
+	resultCount := 0
+	for _, descriptor := range manifest.InventoryPages {
+		b, err := os.ReadFile(filepath.Join(out, "objects", descriptor.SHA256))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(b) != descriptor.Bytes || siteHash(b) != descriptor.SHA256 || len(b) > SiteChunkBytes {
+			t.Fatal("invalid inventory representation")
+		}
+		var page siteInventoryPage
+		if err = json.Unmarshal(b, &page); err != nil {
+			t.Fatal(err)
+		}
+		if page.Schema != 1 || len(page.Objects) != descriptor.Objects || len(page.Objects) > SiteInventoryObjects {
+			t.Fatal("invalid page count")
+		}
+		var contentBytes int64
+		for _, object := range page.Objects {
+			if seen[object.SHA256] {
+				t.Fatal("duplicate payload across pages")
+			}
+			seen[object.SHA256] = true
+			contentBytes += int64(object.Bytes)
+			payload, err := os.ReadFile(filepath.Join(out, "objects", object.SHA256))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(payload) != object.Bytes || len(payload) > SiteChunkBytes || siteHash(payload) != object.SHA256 {
+				t.Fatal("invalid payload")
+			}
+			if object.Kind == "evidence" {
+				var envelope struct {
+					TrialID string `json:"trialId"`
+				}
+				if json.Unmarshal(payload, &envelope) == nil && envelope.TrialID != "" {
+					trials[envelope.TrialID] = true
+				}
+			} else {
+				var record SiteRecord
+				if err = json.Unmarshal(payload, &record); err != nil {
+					t.Fatal(err)
+				}
+				if record.Kind == "result" {
+					resultCount++
+				}
+			}
+		}
+		if contentBytes != descriptor.ContentBytes {
+			t.Fatal("declared payload reservation differs")
+		}
+	}
+	if len(trials) != len(d.Bundle.Trials) || resultCount != 3 {
+		t.Fatal("lost trials or numerical summaries during inventory paging")
+	}
+	for _, trial := range d.Bundle.Trials {
+		if !trials[trial.ID] {
+			t.Fatalf("lost trial %s", trial.ID)
 		}
 	}
 }

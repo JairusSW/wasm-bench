@@ -11,12 +11,26 @@ Older builder-incompatible reports fail verification; retain their legacy
 exports or re-export them with an explicitly trusted matching producer.
 
 `manifest.json` identifies the source report and seal independently. Its
-`objects` inventory is bounded to 512 entries. `objects/SHA256` contains exact,
-independently decoded JSON, at most 256 KiB each; consumers validate both full
-hashes and decoded sizes. No data is synthesized from the website projection.
-An oversized corpus, individual evidence row or catalog record fails explicitly
-and leaves no complete export directory. Large evidence needs additional
-chunking before this development format can handle it.
+`objects` inventory is bounded to 512 entries. Larger exports use an empty
+`objects` array and `inventoryPages` descriptors. Each content-addressed inventory
+page is `{schema:1,objects:[...]}` with at most 512 payload descriptors, and the
+root contains at most 512 pages. A page descriptor records its full SHA-256,
+decoded `bytes`, payload `objects` count and total payload `contentBytes`.
+Consumers must verify all four before granting payload upload permissions; these
+commitments let admission reserve full declared storage before page expansion.
+Payloads may not also appear as inventories or be repeated across pages.
+
+`objects/SHA256` contains exact, independently decoded JSON, at most 256 KiB
+each; consumers validate both full hashes and decoded sizes. No data is
+synthesized from the website projection. More than 262,144 payload objects, an
+individual oversized evidence row or catalog record fails explicitly and leaves
+no complete export directory. Large individual evidence objects need additional
+chunking. Legacy small-manifest encoding is unchanged.
+
+Paged inventories require the consumer's two-stage admission implementation.
+The current website service fails closed on this new manifest field until that
+implementation is available; a producer upgrade alone does not enable large
+completed-job publication.
 
 Records retain exact locked configurations, tracks, workloads, environment
 facts, the producer metric registry, separate analysis versions, and result

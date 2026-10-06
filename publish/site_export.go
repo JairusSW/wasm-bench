@@ -17,6 +17,20 @@ import (
 
 const SiteExportVersion = "site-v2"
 const SiteChunkBytes = 256 * 1024
+const SiteInventoryObjects = 512
+const SiteInventoryPages = 512
+
+type SiteInventory struct {
+	SHA256       string `json:"sha256"`
+	Bytes        int    `json:"bytes"`
+	Objects      int    `json:"objects"`
+	ContentBytes int64  `json:"contentBytes"`
+}
+
+type siteInventoryPage struct {
+	Schema  int          `json:"schema"`
+	Objects []SiteObject `json:"objects"`
+}
 
 type SiteObject struct {
 	SHA256 string `json:"sha256"`
@@ -24,14 +38,15 @@ type SiteObject struct {
 	Kind   string `json:"kind"`
 }
 type SiteManifest struct {
-	Schema             int          `json:"schema"`
-	Format             string       `json:"format"`
-	ReportID           string       `json:"reportId"`
-	SourceReportSHA256 string       `json:"sourceReportSha256"`
-	SourceSealSHA256   string       `json:"sourceSealSha256"`
-	Exporter           string       `json:"exporter"`
-	Verification       string       `json:"verification"`
-	Objects            []SiteObject `json:"objects"`
+	Schema             int             `json:"schema"`
+	Format             string          `json:"format"`
+	ReportID           string          `json:"reportId"`
+	SourceReportSHA256 string          `json:"sourceReportSha256"`
+	SourceSealSHA256   string          `json:"sourceSealSha256"`
+	Exporter           string          `json:"exporter"`
+	Verification       string          `json:"verification"`
+	Objects            []SiteObject    `json:"objects"`
+	InventoryPages     []SiteInventory `json:"inventoryPages,omitempty"`
 }
 type SiteRecord struct {
 	Kind string          `json:"kind"`
@@ -152,8 +167,8 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 		}
 		id := siteHash(b)
 		if !seen[id] {
-			if len(m.Objects) >= 512 {
-				return "", fmt.Errorf("site export object inventory exceeds 512; split the corpus job")
+			if len(m.Objects) >= SiteInventoryObjects*SiteInventoryPages {
+				return "", fmt.Errorf("site export exceeds %d objects", SiteInventoryObjects*SiteInventoryPages)
 			}
 			if e = os.WriteFile(filepath.Join(out, "objects", id), b, 0644); e != nil {
 				return "", e
@@ -483,6 +498,40 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 			if err = addResult(c.Runtime, c.Workload, "compile", "code", metric, "size_bytes", summary, refs); err != nil {
 				return err
 			}
+		}
+	}
+	// Small exports retain their original manifest encoding. Large exports list
+	// independently verified inventory pages rather than embedding every object.
+	// Page byte/count commitments permit consumers to reserve the full declared
+	// payload before they have downloaded the inventory itself.
+	if len(m.Objects) > SiteInventoryObjects {
+		objects := m.Objects
+		m.Objects = []SiteObject{}
+		for start := 0; start < len(objects); start += SiteInventoryObjects {
+			end := min(start+SiteInventoryObjects, len(objects))
+			page := siteInventoryPage{Schema: 1, Objects: objects[start:end]}
+			bytes, e := siteJSON(page)
+			if e != nil {
+				return e
+			}
+			if len(bytes) > SiteChunkBytes {
+				return fmt.Errorf("inventory page exceeds ceiling")
+			}
+			digest := siteHash(bytes)
+			// An inventory occupies the same immutable namespace as payload objects.
+			// Never overwrite any previously emitted representation.
+			if seen[digest] {
+				return fmt.Errorf("inventory digest collides with payload")
+			}
+			if e = os.WriteFile(filepath.Join(out, "objects", digest), bytes, 0644); e != nil {
+				return e
+			}
+			seen[digest] = true
+			var contentBytes int64
+			for _, descriptor := range page.Objects {
+				contentBytes += int64(descriptor.Bytes)
+			}
+			m.InventoryPages = append(m.InventoryPages, SiteInventory{SHA256: digest, Bytes: len(bytes), Objects: len(page.Objects), ContentBytes: contentBytes})
 		}
 	}
 	b, err := siteJSON(m)

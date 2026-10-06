@@ -210,6 +210,29 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 		}
 		return id, nil
 	}
+	binary := func(b []byte) (string, error) {
+		if len(b) == 0 || len(b) > 16*1024*1024 {
+			return "", fmt.Errorf("native bytes exceed producer contract")
+		}
+		id := siteHash(b)
+		if !seen[id] {
+			if len(m.Objects) >= SiteInventoryObjects*SiteInventoryPages {
+				return "", fmt.Errorf("site inventory exceeds ceiling")
+			}
+			if e := os.WriteFile(filepath.Join(out, "objects", id), b, 0644); e != nil {
+				return "", e
+			}
+			m.Objects = append(m.Objects, SiteObject{id, len(b), "binary"})
+			seen[id] = true
+		} else {
+			for _, descriptor := range m.Objects {
+				if descriptor.SHA256 == id && descriptor.Kind != "binary" {
+					return "", fmt.Errorf("binary collides with JSON representation")
+				}
+			}
+		}
+		return id, nil
+	}
 	record := func(kind string, id string, v any) error {
 		b, e := siteJSON(v)
 		if e != nil {
@@ -485,6 +508,14 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 			return err
 		}
 	}
+	codeTrials := map[string]experiment.Trial{}
+	for _, bundle := range extra {
+		if d.CodeSource != nil && bundle.Manifest.ID == d.CodeSource.ID {
+			for _, trial := range bundle.Trials {
+				codeTrials[trial.ID] = trial
+			}
+		}
+	}
 	for _, c := range d.CodeRecords {
 		// Size is meaningful even when no raw image was exported in this transport.
 		codeJSON, e := siteJSON(c)
@@ -502,6 +533,53 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 			}
 		}
 		descriptor := map[string]any{"reportId": m.ReportID, "record": codeValue, "measurementAvailable": c.ImageBytes != nil || c.SizeBytes != nil, "content": map[string]string{"status": "unavailable", "reason": "native bytes are not exported by site-v2 yet"}, "inspection": map[string]string{"status": "unavailable"}}
+		// Reuse the native export admission rules. Withheld or size-only records
+		// retain unavailable content even when a diagnostic trial exists.
+		if trial, ok := codeTrials[c.Trial]; ok && c.Status == "available" {
+			if trial.Runtime != c.Runtime || trial.Workload != c.Workload || trial.Profile != "code" || trial.Scenario != "compile" {
+				return fmt.Errorf("native trial identity differs")
+			}
+			exported := nativeRecord(trial, c.Index)
+			if exported.Status == "available" && exported.Image != nil && trial.CodeImage != nil {
+				module := ""
+				for _, workload := range d.Bundle.Manifest.Lock.Workloads {
+					if workload.ID == c.Workload {
+						module = workload.SHA256
+					}
+				}
+				if e := trial.CodeImage.Validate(module); e != nil {
+					return e
+				}
+				hash, e := binary(trial.CodeImage.Data)
+				if e != nil {
+					return e
+				}
+				if c.ImageBytes == nil || *c.ImageBytes != len(trial.CodeImage.Data) {
+					return fmt.Errorf("native image size differs from report")
+				}
+				image := *exported.Image
+				functions, e := chunks(image.Functions)
+				if e != nil {
+					return e
+				}
+				image.Functions = nil
+				metadata, e := object("evidence", map[string]any{"kind": "native-image-metadata", "reportId": m.ReportID, "passId": d.CodeSource.ID, "trialId": trial.ID, "image": image, "functions": functions, "references": functions})
+				if e != nil {
+					return e
+				}
+				descriptor["content"] = map[string]any{"status": "available", "sha256": hash, "bytes": len(trial.CodeImage.Data), "mediaType": "application/octet-stream"}
+				status := "unavailable"
+				if len(functions) > 0 {
+					status = "available"
+				}
+				descriptor["inspection"] = map[string]any{"status": status, "metadata": metadata, "functionAttribution": image.FunctionAttribution, "disassembly": map[string]string{"status": "unavailable", "reason": "offline derivative not exported"}}
+				descriptor["target"] = map[string]string{"architecture": image.Architecture, "backend": image.Backend}
+				descriptor["interpretation"] = nativeExportInterpretation
+				if image.Version == 3 {
+					descriptor["interpretation"] = nativeMaterializedExportInterpretation
+				}
+			}
+		}
 		descriptorJSON, e := siteJSON(descriptor)
 		if e != nil {
 			return e

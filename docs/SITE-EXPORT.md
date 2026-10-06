@@ -21,7 +21,9 @@ commitments let admission reserve full declared storage before page expansion.
 Payloads may not also appear as inventories or be repeated across pages.
 
 `objects/SHA256` contains exact, independently decoded JSON, at most 256 KiB
-each; consumers validate both full hashes and decoded sizes. No data is
+each, or admitted `binary` native-image objects at most 16 MiB. Native originals
+are stored by their complete SHA-256, without base64 in website evidence.
+Consumers validate both full hashes and decoded sizes. No data is
 synthesized from the website projection. More than 262,144 payload objects, an
 individual oversized catalog/result record or evidence value above 64 MiB fails
 explicitly and leaves no complete export directory. Legacy small-manifest encoding
@@ -57,15 +59,30 @@ ordinary summary records. Trial/sample and observation objects retain pass, tria
 and block identity. Trial envelopes link pass context, diagnostic details, adapter
 samples and phase events through `references`; samples and observations retain
 their legacy links. Scientific payloads are never interpreted as transport links.
-Trial details preserve all remaining fields except `code_image`, whose binary
-transport is pending. Oversized diagnostic values use the referenced JSON resource format.
+Trial details exclude the `code_image` base64 payload; admitted originals have
+separate binary and metadata resources. Oversized diagnostic values use the referenced JSON resource format.
 The original report remains authoritative. Memory result profile
 comes from its explicit stage metadata or its recorded report-level source;
 timing-pass RSS is never multiplied by inner sample count.
 
-Code-size measurement and raw-image availability are independent. This first
-transport exports size descriptors, including engine-reported sizes without
-images; it does not yet export native binaries or inspection resources. Exact
+Code-size measurement and raw-image availability are independent. The producer
+now reuses the existing `nativeRecord` rules and `CodeImage.Validate` contract to
+export admitted images from the separately verified code pass. It checks trial,
+runtime, workload, module hash, full image hash and recorded image size. Withheld
+records do not export content. Engine-reported size-only records retain their
+unavailable-content descriptors.
+
+Artifact descriptors stay below 10 KiB. They link small image metadata and
+independently bounded function-array resources, retaining exact offsets, lengths,
+Wasm indices, tiers and generation. Original function names and ranges are not
+inferred or regenerated. Function inspection can be available while disassembly
+remains explicitly unavailable; existing native-image interpretation accompanies
+the artifact. No request-time disassembly is introduced.
+
+The website service/coordinator currently reject the `binary` object kind. Before
+enabling that path, implement binary storage/download and ensure representation
+changes do not duplicate scientific history. This producer-only stage is not
+end-to-end native publication. Exact
 `size_bytes` values outside JavaScript's safe integer range are decimal strings
 in descriptors and code-size summaries. No hash or download is offered for
 unexported native bytes.

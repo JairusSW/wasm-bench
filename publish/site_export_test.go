@@ -1,6 +1,7 @@
 package publish
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -508,5 +509,149 @@ func TestSiteExportLargeEvidencePreservesExactJSON(t *testing.T) {
 	}
 	if resources < 3 {
 		t.Fatal("large evidence was not fragmented")
+	}
+}
+
+func nativeSiteFixture() (Dataset, experiment.Bundle, []byte) {
+	d := siteFixture()
+	module := siteHash([]byte("synthetic input module"))
+	d.Bundle.Manifest.Lock.Workloads[0].SHA256 = module
+	native := bytes.Repeat([]byte{0x90, 0xc3}, 200000)
+	image := &protocol.CodeImage{Version: 2, ModuleSHA256: module, SHA256: siteHash(native), Architecture: "amd64", Backend: "cranelift", Format: "raw-native-image", SectionKind: "mixed_code_and_embedded_data", Event: "compiled_snapshot", FunctionAttribution: "engine_reported", Data: native, Functions: []protocol.CodeFunction{{ModuleIndex: 0, WasmIndex: 7, Offset: 0, Length: 32, Tier: "cranelift"}}}
+	count := len(native)
+	d.CodeRecords[0].Status = "available"
+	d.CodeRecords[0].ImageBytes = &count
+	size := uint64(count)
+	d.CodeRecords[0].SizeBytes = &size
+	bundle := experiment.Bundle{Manifest: experiment.Manifest{ID: "code-pass"}, Trials: []experiment.Trial{{ID: "code-0", Runtime: "engine", Workload: "fixture/a", Profile: "code", Scenario: "compile", Status: "ok", CodeImage: image}}}
+	return d, bundle, native
+}
+
+func TestSiteExportNativeBinaryAndFunctionResources(t *testing.T) {
+	d, bundle, native := nativeSiteFixture()
+	data, _ := json.Marshal(d)
+	out := filepath.Join(t.TempDir(), "site")
+	if err := writeSiteDataset(d, data, []byte("synthetic seal"), out, bundle); err != nil {
+		t.Fatal(err)
+	}
+	var manifest SiteManifest
+	if err := experiment.ReadJSON(filepath.Join(out, "manifest.json"), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	foundBinary, foundDescriptor := false, false
+	for _, object := range manifest.Objects {
+		b, err := os.ReadFile(filepath.Join(out, "objects", object.SHA256))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if object.Kind == "binary" {
+			foundBinary = true
+			if !bytes.Equal(b, native) || object.SHA256 != bundle.Trials[0].CodeImage.SHA256 || object.Bytes != len(native) {
+				t.Fatal("native original changed")
+			}
+			continue
+		}
+		if len(b) > SiteChunkBytes {
+			t.Fatal("unbounded JSON metadata")
+		}
+		if object.Kind != "record" {
+			continue
+		}
+		var record SiteRecord
+		_ = json.Unmarshal(b, &record)
+		if record.Kind != "artifact" {
+			continue
+		}
+		foundDescriptor = true
+		if len(record.Data)+512 > 10*1024 {
+			t.Fatal("oversized artifact descriptor")
+		}
+		var descriptor struct {
+			MeasurementAvailable bool `json:"measurementAvailable"`
+			Content              struct {
+				Status, SHA256 string
+				Bytes          int
+			} `json:"content"`
+			Inspection struct {
+				Status, Metadata string
+				Disassembly      struct{ Status string }
+			} `json:"inspection"`
+		}
+		if err = json.Unmarshal(record.Data, &descriptor); err != nil {
+			t.Fatal(err)
+		}
+		if !descriptor.MeasurementAvailable || descriptor.Content.Status != "available" || descriptor.Content.SHA256 != siteHash(native) || descriptor.Content.Bytes != len(native) || descriptor.Inspection.Status != "available" || descriptor.Inspection.Disassembly.Status != "unavailable" {
+			t.Fatal("availability or provenance changed")
+		}
+		var metadata struct {
+			Image     protocol.CodeImage
+			Functions []string
+		}
+		if err = experiment.ReadJSON(filepath.Join(out, "objects", descriptor.Inspection.Metadata), &metadata); err != nil {
+			t.Fatal(err)
+		}
+		if len(metadata.Image.Data) != 0 || len(metadata.Image.Functions) != 0 || len(metadata.Functions) != 1 {
+			t.Fatal("inline image or function preload")
+		}
+		var functions []protocol.CodeFunction
+		if err = experiment.ReadJSON(filepath.Join(out, "objects", metadata.Functions[0]), &functions); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(functions, bundle.Trials[0].CodeImage.Functions) {
+			t.Fatal("function attribution changed")
+		}
+	}
+	if !foundBinary || !foundDescriptor {
+		t.Fatal("missing admitted native content")
+	}
+}
+
+func TestSiteExportRejectsNativeIdentityMismatch(t *testing.T) {
+	for _, kind := range []string{"hash", "module", "runtime", "profile", "size"} {
+		t.Run(kind, func(t *testing.T) {
+			d, bundle, _ := nativeSiteFixture()
+			switch kind {
+			case "hash":
+				bundle.Trials[0].CodeImage.SHA256 = strings.Repeat("a", 64)
+			case "module":
+				bundle.Trials[0].CodeImage.ModuleSHA256 = strings.Repeat("b", 64)
+			case "runtime":
+				bundle.Trials[0].Runtime = "different"
+			case "profile":
+				bundle.Trials[0].Profile = "timing"
+			case "size":
+				wrong := 1
+				d.CodeRecords[0].ImageBytes = &wrong
+			}
+			data, _ := json.Marshal(d)
+			out := filepath.Join(t.TempDir(), "site")
+			if err := writeSiteDataset(d, data, []byte("seal"), out, bundle); err == nil {
+				t.Fatal("accepted native identity mismatch")
+			}
+			if _, err := os.Stat(out); !os.IsNotExist(err) {
+				t.Fatal("failed export left files")
+			}
+		})
+	}
+}
+
+func TestSiteExportDoesNotExposeWithheldNativeImage(t *testing.T) {
+	d, bundle, _ := nativeSiteFixture()
+	d.CodeRecords[0].Status = "withheld_host_mismatch"
+	d.CodeRecords[0].ImageBytes = nil
+	d.CodeRecords[0].SizeBytes = nil
+	data, _ := json.Marshal(d)
+	out := filepath.Join(t.TempDir(), "site")
+	if err := writeSiteDataset(d, data, []byte("seal"), out, bundle); err != nil {
+		t.Fatal(err)
+	}
+	var manifest SiteManifest
+	if err := experiment.ReadJSON(filepath.Join(out, "manifest.json"), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	for _, object := range manifest.Objects {
+		if object.Kind == "binary" {
+			t.Fatal("published withheld bytes")
+		}
 	}
 }

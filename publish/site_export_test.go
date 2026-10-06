@@ -604,6 +604,12 @@ func TestSiteExportNativeBinaryAndFunctionResources(t *testing.T) {
 	if !foundBinary || !foundDescriptor {
 		t.Fatal("missing admitted native content")
 	}
+	if fixture := os.Getenv("WASMFYI_NATIVE_FIXTURE_OUT"); fixture != "" {
+		if err := os.CopyFS(fixture, os.DirFS(out)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 }
 
 func TestSiteExportRejectsNativeIdentityMismatch(t *testing.T) {

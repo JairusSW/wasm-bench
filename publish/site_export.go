@@ -24,6 +24,24 @@ const SiteResourceBytes = 64 * 1024 * 1024
 const SiteFragmentBytes = 120 * 1024
 const SiteInventoryObjects = 512
 const SiteInventoryPages = 512
+const SiteBinaryBytes = 16 * 1024 * 1024
+
+type SiteCapabilities struct {
+	Schema           int    `json:"schema"`
+	Format           string `json:"format"`
+	ExportSchema     int    `json:"exportSchema"`
+	Verification     string `json:"verification"`
+	ChunkBytes       int    `json:"chunkBytes"`
+	BinaryBytes      int    `json:"binaryBytes"`
+	InventoryObjects int    `json:"inventoryObjects"`
+	InventoryPages   int    `json:"inventoryPages"`
+}
+
+// SiteExportContract describes transport support without reading a report or
+// executing measurement tools. Coordinators use it before starting collection.
+func SiteExportContract() SiteCapabilities {
+	return SiteCapabilities{1, SiteExportVersion, 2, "source-recomputed", SiteChunkBytes, SiteBinaryBytes, SiteInventoryObjects, SiteInventoryPages}
+}
 
 type SiteInventory struct {
 	SHA256       string `json:"sha256"`
@@ -230,7 +248,7 @@ func writeSiteDatasetSources(d Dataset, data, seal []byte, out, report, nativeAr
 		return id, nil
 	}
 	binary := func(b []byte) (string, error) {
-		if len(b) > 16*1024*1024 {
+		if len(b) > SiteBinaryBytes {
 			return "", fmt.Errorf("native bytes exceed producer contract")
 		}
 		id := siteHash(b)

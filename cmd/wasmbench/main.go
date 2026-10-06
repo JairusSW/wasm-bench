@@ -1050,11 +1050,18 @@ func run(ctx context.Context, args []string) error {
 		return output(b)
 	case "export-site":
 		f := flags("export-site")
+		describe := f.Bool("describe", false, "print bounded export capabilities without reading or executing evidence")
 		report := f.String("report", "", "verified sealed measurement report")
 		out := f.String("out", "", "new bounded site-v2 export directory")
 		nativeArchive := f.String("native-disassembly", "", "separately sealed offline native disassembly archive for the exact code pass")
 		if err := f.Parse(args[1:]); err != nil {
 			return err
+		}
+		if *describe {
+			if *report != "" || *out != "" || *nativeArchive != "" || f.NArg() != 0 {
+				return fmt.Errorf("export-site --describe does not accept evidence or output paths")
+			}
+			return output(publish.SiteExportContract())
 		}
 		if *report == "" || *out == "" || f.NArg() != 0 {
 			return fmt.Errorf("export-site requires --report and --out")

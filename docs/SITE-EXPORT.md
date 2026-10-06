@@ -4,6 +4,15 @@
 wasmbench export-site --report reports/COMPLETE --out exports/NEW
 ```
 
+Before collection, coordinators may call `wasmbench export-site --describe`.
+This prints a schema-1 capability object containing `format`, `exportSchema`,
+`verification`, `chunkBytes`, `binaryBytes`, `inventoryObjects` and
+`inventoryPages`. These limits come from the exporter constants. The command
+accepts no report, output or diagnostic path and does not read source evidence,
+run measurement tools or create an export. It describes transport support,
+not source verification or operator qualification. Existing export commands and
+encodings remain readable.
+
 The command uses the installed trusted report builder to verify the seal and
 recompute its source dataset before projecting it. It never executes a builder
 archived inside an input. The output must be new and outside the input report.

@@ -195,3 +195,29 @@ It now verifies all trial identities in producer order, unchanged source summary
 fields and bounded objects. Its timing record is 2,504 bytes with one root.
 This establishes transport scale, not scientific qualification of the synthetic
 trials. Other oversized catalog/result fields still fail explicitly.
+
+When the verified measurement report's `code/` export contains sealed
+`native-image-disassembly-v2` diagnostics, site export transports its attributed
+function listings as `llvm-function-listing-v1`. It reuses `export-code`'s offline
+LLVM outputs and range mappings; it never launches a disassembler itself.
+
+Each function retains its image/module/range, original text digest/bytes, tool
+executable hashes/versions, recorded argv and interpretation. Explicitly linked
+`native-functions-v2` shards reference per-function descriptors and independent
+line chunks. Chunks contain at most 256 lines and 128 KiB encoded line data;
+individual lines have a 16 KiB ceiling and a function has at most 4,096 chunks.
+Exact text, newline bytes and original image-relative addresses survive assembly.
+Legacy function arrays remain readable, and artifacts lacking exported listings
+continue to advertise unavailable disassembly. This transport is integrity-checked
+producer diagnostics, not independent redisassembly or instruction-only sizes;
+tool dynamic libraries remain unpinned.
+
+Opt-in installed-LLVM compatibility gate (synthetic attributed bytes; no benchmark
+or native-image execution):
+
+```sh
+WASMBENCH_NATIVE_LLVM_TEST=1 \
+WASMBENCH_LLVM_OBJCOPY=/path/to/llvm-objcopy \
+WASMBENCH_LLVM_OBJDUMP=/path/to/llvm-objdump \
+go test ./publish -run 'TestSiteDisassembly|TestSiteExportSealedLLVM' -count=1
+```

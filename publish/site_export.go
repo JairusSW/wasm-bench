@@ -592,6 +592,10 @@ func writeSiteDatasetFiles(d Dataset, data, seal []byte, out, report string, ext
 			}
 		}
 	}
+	disassemblies, disassemblyTools, disassemblySourceVersion, e := siteDisassemblies(report)
+	if e != nil {
+		return e
+	}
 	for _, c := range d.CodeRecords {
 		// Size is meaningful even when no raw image was exported in this transport.
 		codeJSON, e := siteJSON(c)
@@ -637,7 +641,11 @@ func writeSiteDatasetFiles(d Dataset, data, seal []byte, out, report string, ext
 				if len(image.Functions) > 1000000 {
 					return fmt.Errorf("native function count exceeds ceiling")
 				}
-				functions, counts, e := chunksWithCounts(image.Functions)
+				var derivative *NativeExportRecord
+				if recorded, ok := disassemblies[trial.ID]; ok && recorded.Disassembly != nil {
+					derivative = &recorded
+				}
+				functions, counts, e := siteNativeFunctions(image, derivative, disassemblyTools, disassemblySourceVersion, object)
 				if e != nil {
 					return e
 				}
@@ -659,6 +667,9 @@ func writeSiteDatasetFiles(d Dataset, data, seal []byte, out, report string, ext
 					status = "available"
 				}
 				descriptor["inspection"] = map[string]any{"status": status, "metadata": metadata, "functionAttribution": image.FunctionAttribution, "disassembly": map[string]string{"status": "unavailable", "reason": "offline derivative not exported"}}
+				if derivative != nil && len(functions) > 0 {
+					descriptor["inspection"].(map[string]any)["disassembly"] = map[string]string{"status": "available", "version": "llvm-function-listing-v1", "selection": "producer-function-ordinal"}
+				}
 				descriptor["target"] = map[string]string{"architecture": image.Architecture, "backend": image.Backend}
 				descriptor["interpretation"] = nativeExportInterpretation
 				if image.Version == 3 {

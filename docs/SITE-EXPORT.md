@@ -112,3 +112,27 @@ go test ./publish ./cmd/wasmbench
 This is a development producer contract. Additional analytical evidence exports,
 native inspection, package publication and the consuming frontend migration
 remain separate follow-up work. Existing report formats and readers are unchanged.
+
+Each result now includes a bounded `measurementMethod` and its full
+`measurementMethodId`. The descriptor retains the source profile, metric,
+scenario, statistic, locked protocol/runner/host-policy fields and a normalized
+per-scenario recipe. Suite names and other scenario selections are scheduling
+metadata and do not split the recipe; the actual scenario sample override remains.
+Unsafe integer seeds and durations use exact decimal strings in this recipe.
+The descriptor is at most 64 KiB, with a 32 KiB recipe and at most 32 distinct
+observation identities.
+
+Memory identities come from the contributing source trials and the existing
+memory observation eligibility function: definition version, unit, scope, phase,
+collector/version, quality, actual profile and normalization denominator survive.
+Trial-scoped RSS is not multiplied by timing sample counts. Pass IDs and exporter
+binary identities are provenance and do not define a reusable method. Changed
+collector versions or locked recipes produce different method digests. Timing
+samples and native code records do not universally name their collector, so those
+descriptors say `not_recorded`; the exporter does not infer a collector from the
+OS or runtime name. A missing source pass yields an unavailable descriptor.
+
+These selectors project existing verified evidence without changing source
+statistics or scientific definitions. Website compatibility/cohort policy still
+needs to decide which recorded methods can be compared; matching a digest is not
+a substitute for operator qualification or independent source verification.

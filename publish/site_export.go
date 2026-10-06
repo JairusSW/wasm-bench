@@ -417,7 +417,7 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 	if err = record("report", m.ReportID, map[string]any{"runId": d.Bundle.Manifest.ID, "created": d.Bundle.Manifest.Created, "sourceReportSha256": m.SourceReportSHA256, "sourceSealSha256": m.SourceSealSHA256, "runnerSha256": d.Bundle.Manifest.Lock.RunnerSHA256, "passContexts": passContexts, "versions": versions, "headlineLatencyPolicy": d.LatencyPolicy, "memorySource": d.MemorySource, "codeSource": d.CodeSource, "verification": m.Verification}); err != nil {
 		return err
 	}
-	addResult := func(runtime, workload, scenario, profile, metric, statistic string, summary any, refs []string) error {
+	addResult := func(runtime, workload, scenario, profile, metric, statistic, pass string, trials map[string]bool, summary any, refs []string) error {
 		if configs[runtime] == "" || contracts[workload] == "" {
 			return fmt.Errorf("result references unknown configuration or contract")
 		}
@@ -442,6 +442,15 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 			return fmt.Errorf("metric missing from source registry: %s", metric)
 		}
 		value := map[string]any{"reportId": m.ReportID, "environmentId": environment, "configurationId": configs[runtime], "trackId": tracks[runtime], "runtime": runtime, "contractId": contracts[workload], "workload": workload, "scenario": scenario, "profile": profile, "metric": metric, "metricDefinitionId": definitions[metric], "metricDefinitionStatus": definitionStatus, "statistic": statistic, "created": d.Bundle.Manifest.Created, "analysisVersion": d.AnalysisVersion, "summary": summary, "evidence": refs}
+		method, e := siteMethod(append([]experiment.Bundle{d.Bundle}, extra...), pass, runtime, workload, scenario, profile, metric, statistic, trials)
+		if e != nil {
+			return e
+		}
+		value["measurementMethod"] = method
+		value["measurementMethodId"], e = siteID(method)
+		if e != nil {
+			return e
+		}
 		id, e := siteID(value)
 		if e != nil {
 			return e
@@ -471,7 +480,7 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 		}
 		refs = append(refs, diagnosticID)
 		// Preserve the producer's interval and unavailable reason byte-for-value.
-		if err = addResult(s.Runtime, s.Workload, s.Scenario, s.Profile, "time.wall", "median_ns_per_operation", compact, refs); err != nil {
+		if err = addResult(s.Runtime, s.Workload, s.Scenario, s.Profile, "time.wall", "median_ns_per_operation", d.Bundle.Manifest.ID, nil, compact, refs); err != nil {
 			return err
 		}
 	}
@@ -504,7 +513,11 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 				refs = append(refs, id)
 			}
 		}
-		if err = addResult(s.Runtime, s.Workload, s.Scenario, sourceProfile, s.Metric, "median_bytes", compact, refs); err != nil {
+		trialSet := map[string]bool{}
+		for _, id := range s.Trials {
+			trialSet[id] = true
+		}
+		if err = addResult(s.Runtime, s.Workload, s.Scenario, sourceProfile, s.Metric, "median_bytes", sourceRun, trialSet, compact, refs); err != nil {
 			return err
 		}
 	}
@@ -613,7 +626,11 @@ func writeSiteDataset(d Dataset, data, seal []byte, out string, extra ...experim
 					refs = append(refs, trial)
 				}
 			}
-			if err = addResult(c.Runtime, c.Workload, "compile", "code", metric, "size_bytes", summary, refs); err != nil {
+			pass := ""
+			if d.CodeSource != nil {
+				pass = d.CodeSource.ID
+			}
+			if err = addResult(c.Runtime, c.Workload, "compile", "code", metric, "size_bytes", pass, map[string]bool{c.Trial: true}, summary, refs); err != nil {
 				return err
 			}
 		}

@@ -197,6 +197,8 @@ func TestSiteExportSeparateMemoryAndExactSize(t *testing.T) {
 	d.CodeRecords[0].SizeBytes = &size
 	bundle := experiment.Bundle{Manifest: experiment.Manifest{ID: "memory-pass"}, Trials: []experiment.Trial{{ID: "memory-0", Runtime: "engine", Workload: "fixture/a", Profile: "memory", Scenario: "steady"}}}
 	codeBundle := experiment.Bundle{Manifest: experiment.Manifest{ID: "code-pass"}, Trials: []experiment.Trial{{ID: "code-0", Runtime: "engine", Workload: "fixture/a", Profile: "code", Scenario: "compile"}}}
+	bundle.Manifest.Lock.Options.Profile = "memory"
+	codeBundle.Manifest.Lock.Options.Profile = "code"
 	data, _ := json.Marshal(d)
 	out := filepath.Join(t.TempDir(), "site")
 	if e := writeSiteDataset(d, data, []byte("synthetic seal"), out, bundle, codeBundle); e != nil {
@@ -524,6 +526,7 @@ func nativeSiteFixture() (Dataset, experiment.Bundle, []byte) {
 	size := uint64(count)
 	d.CodeRecords[0].SizeBytes = &size
 	bundle := experiment.Bundle{Manifest: experiment.Manifest{ID: "code-pass"}, Trials: []experiment.Trial{{ID: "code-0", Runtime: "engine", Workload: "fixture/a", Profile: "code", Scenario: "compile", Status: "ok", CodeImage: image}}}
+	bundle.Manifest.Lock.Options.Profile = "code"
 	return d, bundle, native
 }
 
